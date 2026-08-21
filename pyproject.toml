@@ -1,0 +1,61 @@
+[project]
+name = "ndvi-guadalquivir"
+version = "0.1.0"
+description = "Pipeline geoespacial de monitorizacion de vegetacion con datos Sentinel-2 de Copernicus sobre la cuenca del Guadalquivir"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Dario Rodriguez Gonzalez", email = "dariorodriguezgpollol10@gmail.com" }]
+keywords = ["copernicus", "sentinel-2", "ndvi", "stac", "data-engineering", "lakehouse"]
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+
+dependencies = [
+    "affine>=2.4.0",
+    "duckdb>=1.5.5",
+    "geopandas>=1.1.4",
+    "numpy<3",
+    "pandas>=3.0.5",
+    "pandera[pandas]>=0.26.1",
+    "pystac-client>=0.9.0",
+    "rasterio>=1.5.1",
+    "rioxarray>=0.23.0",
+    "shapely>=2.1.2",
+    "xarray>=2026.7.0",
+]
+
+[dependency-groups]
+dev = ["mypy>=1.19.1", "pytest>=9.1.1", "pytest-cov>=7.1.0", "ruff>=0.16.4"]
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = ["integration: tests que acceden al catalogo remoto (requieren red)"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::UserWarning"]
+
+[tool.coverage.run]
+source = ["src/ndvi_guadalquivir"]
+branch = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RET", "ARG", "PTH", "RUF"]
+ignore = ["N805", "RUF012"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ARG", "N802", "N806"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["ndvi_guadalquivir"]
+ignore_missing_imports = true
+warn_unused_ignores = true

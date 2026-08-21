@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Herramientas
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Datos y artefactos generados (no se versionan: se regeneran)
+data/
+*.duckdb
+*.duckdb.wal
+*.tif
+*.parquet
+
+# Entorno
+.env
+.DS_Store

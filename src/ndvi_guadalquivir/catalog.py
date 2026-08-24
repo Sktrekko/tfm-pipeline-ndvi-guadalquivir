@@ -17,6 +17,7 @@ from pystac import Item
 from pystac_client import Client
 
 from .config import StacSettings
+from .indices import BOA_ADD_OFFSET
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,10 @@ logger = logging.getLogger(__name__)
 ASSET_RED = "red"      # B04, 10 m
 ASSET_NIR = "nir"      # B08, 10 m
 ASSET_SCL = "scl"      # Scene Classification Layer, 20 m
+
+#: Primera linea base de procesado que incorpora el offset radiometrico de
+#: -1000. Desde ella el valor fisico es (DN - 1000) / 10000; antes, DN / 10000.
+_OFFSET_SINCE_BASELINE = (4, 0)
 
 
 @dataclass(frozen=True)
@@ -43,6 +48,15 @@ class Scene:
     red_href: str
     nir_href: str
     scl_href: str
+    #: Version del algoritmo de la ESA que genero el producto ("05.00").
+    #: Decide el offset y sirve para elegir entre versiones duplicadas.
+    processing_baseline: str = "00.00"
+    #: Offset aditivo que este pipeline debe aplicar a los enteros crudos.
+    #: Se resuelve aqui, al traducir el item, porque depende del proveedor:
+    #: Element84 resta el de la linea base 04.00 dentro del propio COG en la
+    #: mayoria de las escenas y lo declara en `earthsearch:boa_offset_applied`.
+    #: Aplicarlo dos veces hundiria la reflectancia tanto como ignorarlo.
+    boa_offset: float = 0.0
 
     @property
     def acquisition_date(self) -> date:
@@ -72,6 +86,8 @@ class Scene:
             props.get("mgrs:grid_square", ""),
         )
 
+        baseline = str(props.get("s2:processing_baseline") or "00.00")
+
         return cls(
             item_id=item.id,
             acquired_at=item.datetime,
@@ -81,6 +97,10 @@ class Scene:
             red_href=item.assets[ASSET_RED].href,
             nir_href=item.assets[ASSET_NIR].href,
             scl_href=item.assets[ASSET_SCL].href,
+            processing_baseline=baseline,
+            boa_offset=_resolve_boa_offset(
+                baseline, bool(props.get("earthsearch:boa_offset_applied"))
+            ),
         )
 
 
@@ -128,7 +148,9 @@ def search_scenes(
             # Un item incompleto no debe tumbar la ejecucion entera.
             logger.warning("Se descarta el item %s: %s", item.id, exc)
 
-    scenes.sort(key=lambda scene: (scene.acquired_at, scene.tile_id))
+    # La limpieza se hace aqui, en la frontera con el proveedor, para que
+    # ningun consumidor tenga que saber que el catalogo trae duplicados.
+    scenes = deduplicate_scenes(scenes)
     if limit is not None:
         scenes = scenes[:limit]
 
@@ -137,6 +159,70 @@ def search_scenes(
         len(scenes), settings.collection, _as_iso(start), _as_iso(end), threshold,
     )
     return scenes
+
+
+def deduplicate_scenes(scenes: Sequence[Scene]) -> list[Scene]:
+    """Se queda con una version de cada observacion (tile y fecha).
+
+    La ESA reprocesa periodicamente su archivo con algoritmos mejorados y el
+    catalogo conserva las dos versiones del mismo granulo. Medido sobre la
+    cuenca: en 2019-2021 casi la mitad de las escenas son la version antigua
+    de otra que tambien esta, y leer ambas duplica el tiempo de esos anos sin
+    aportar informacion.
+
+    Sobrevive la linea base de procesado mas alta, que es la correccion mas
+    moderna. A igualdad de linea base decide el identificador, que lleva un
+    numero de secuencia creciente, de modo que el resultado no depende del
+    orden en que el catalogo devuelva los items.
+    """
+    survivors: dict[tuple[str, date], Scene] = {}
+    for scene in scenes:
+        key = (scene.tile_id, scene.acquisition_date)
+        rival = survivors.get(key)
+        if rival is None or _dedup_rank(scene) > _dedup_rank(rival):
+            survivors[key] = scene
+
+    kept = sorted(survivors.values(), key=lambda s: (s.acquired_at, s.tile_id))
+    dropped = len(scenes) - len(kept)
+    if dropped:
+        logger.info(
+            "Descartadas %d escenas duplicadas de %d (%.0f%%)",
+            dropped, len(scenes), 100 * dropped / len(scenes),
+        )
+    return kept
+
+
+def _dedup_rank(scene: Scene) -> tuple[tuple[int, ...], str]:
+    return _baseline_tuple(scene.processing_baseline), scene.item_id
+
+
+def _baseline_tuple(baseline: str) -> tuple[int, ...]:
+    """Convierte "05.00" en (5, 0) para poder comparar lineas base.
+
+    Compararlas como texto funcionaria hoy, pero "10.00" quedaria por debajo
+    de "05.00" en cuanto la ESA pase de dos digitos.
+    """
+    try:
+        return tuple(int(part) for part in baseline.split("."))
+    except ValueError:
+        return (0,)
+
+
+def _resolve_boa_offset(baseline: str, provider_applied: bool) -> float:
+    """Decide que offset debe aplicar el pipeline a una escena.
+
+    Tres casos, verificados contra el catalogo escena a escena:
+
+    - Lineas base anteriores a la 04.00: el producto nunca tuvo offset.
+    - Desde la 04.00, si el proveedor declara haberlo restado ya en el COG
+      (`earthsearch:boa_offset_applied`), aplicarlo otra vez lo duplicaria.
+    - Desde la 04.00 sin esa declaracion, lo aplica el pipeline. Es el caso
+      de unas pocas escenas de 2022 en Element84 y de toda la coleccion
+      Collection-1, que no usa la propiedad.
+    """
+    if _baseline_tuple(baseline) < _OFFSET_SINCE_BASELINE or provider_applied:
+        return 0.0
+    return BOA_ADD_OFFSET
 
 
 def group_by_date(scenes: Sequence[Scene]) -> Iterator[tuple[date, list[Scene]]]:

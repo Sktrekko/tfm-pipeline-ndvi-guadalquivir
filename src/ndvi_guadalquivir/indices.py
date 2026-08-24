@@ -136,6 +136,7 @@ def compute_ndvi(
     scl: npt.NDArray | None = None,
     *,
     apply_reflectance_scaling: bool = True,
+    add_offset: float = BOA_ADD_OFFSET,
 ) -> npt.NDArray[np.float32]:
     """Calcula el NDVI a partir de las bandas roja e infrarroja cercana.
 
@@ -146,6 +147,10 @@ def compute_ndvi(
             `red`. Si se omite no se aplica enmascarado de nubes.
         apply_reflectance_scaling: convertir de enteros a reflectancia antes
             del calculo. Se desactiva cuando las bandas ya vienen escaladas.
+        add_offset: offset aditivo que corresponde a esta escena concreta.
+            Depende de la linea base de procesado y de si el proveedor ya lo
+            resto en el fichero, asi que lo decide quien conoce la escena
+            (ver `catalog.Scene.boa_offset`), no esta funcion.
 
     Returns:
         NDVI en float32, con NaN en los pixeles invalidos.
@@ -165,8 +170,8 @@ def compute_ndvi(
         )
 
     if apply_reflectance_scaling:
-        red_values = to_reflectance(red)
-        nir_values = to_reflectance(nir)
+        red_values = to_reflectance(red, add_offset=add_offset)
+        nir_values = to_reflectance(nir, add_offset=add_offset)
     else:
         red_values = np.asarray(red, dtype=np.float32)
         nir_values = np.asarray(nir, dtype=np.float32)

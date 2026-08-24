@@ -122,6 +122,8 @@ def synthetic_scene(tmp_path):
     size = 512
     # Reflectancia 0,10 en rojo y 0,50 en NIR con el offset de la linea base
     # 04.00 aplicado al reves, para que el codigo lo deshaga y salga NDVI 2/3.
+    # La escena declara `boa_offset` porque representa el caso en que el
+    # proveedor no lo resto en el fichero y le toca hacerlo al pipeline.
     red = np.full((size, size), 0.10 * 10_000 + 1_000, dtype=np.uint16)
     nir = np.full((size, size), 0.50 * 10_000 + 1_000, dtype=np.uint16)
     scl = np.full((size // 2, size // 2), 4, dtype=np.uint8)  # todo vegetacion
@@ -135,6 +137,8 @@ def synthetic_scene(tmp_path):
         red_href=_write_cog(tmp_path / "red.tif", red, 10.0, RioResampling.average),
         nir_href=_write_cog(tmp_path / "nir.tif", nir, 10.0, RioResampling.average),
         scl_href=_write_cog(tmp_path / "scl.tif", scl, 20.0, RioResampling.mode),
+        processing_baseline="04.00",
+        boa_offset=-1000.0,
     )
 
 

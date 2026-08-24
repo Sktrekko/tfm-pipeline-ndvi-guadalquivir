@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 import pytest
 from pystac import Asset, Item
 
-from ndvi_guadalquivir.catalog import Scene, group_by_date
+from ndvi_guadalquivir.catalog import Scene, deduplicate_scenes, group_by_date
 
 
 def _item(**overrides) -> Item:
@@ -105,6 +105,93 @@ class TestGroupByDate:
 
     def test_sin_escenas_no_produce_grupos(self):
         assert list(group_by_date([])) == []
+
+
+class TestBoaOffset:
+    """La regla del offset se verifico contra el catalogo escena a escena.
+
+    Tres casos reales conviven en la coleccion: productos antiguos sin offset,
+    productos modernos donde Element84 ya lo resto dentro del COG, y unas
+    pocas escenas de 2022 donde no lo hizo y le toca al pipeline.
+    """
+
+    def test_linea_base_antigua_no_lleva_offset(self):
+        item = _item(properties={
+            "s2:processing_baseline": "02.09",
+            "earthsearch:boa_offset_applied": False,
+        })
+        assert Scene.from_stac_item(item).boa_offset == 0.0
+
+    def test_moderna_ya_aplicada_por_el_proveedor_no_se_repite(self):
+        item = _item(properties={
+            "s2:processing_baseline": "05.00",
+            "earthsearch:boa_offset_applied": True,
+        })
+        assert Scene.from_stac_item(item).boa_offset == 0.0
+
+    def test_moderna_sin_aplicar_la_aplica_el_pipeline(self):
+        item = _item(properties={
+            "s2:processing_baseline": "04.00",
+            "earthsearch:boa_offset_applied": False,
+        })
+        assert Scene.from_stac_item(item).boa_offset == -1000.0
+
+    def test_sin_declaracion_del_proveedor_se_asume_sin_aplicar(self):
+        """Es el caso de Collection-1, que no usa la propiedad."""
+        item = _item(properties={"s2:processing_baseline": "05.09"})
+        assert Scene.from_stac_item(item).boa_offset == -1000.0
+
+    def test_guarda_la_linea_base_para_la_deduplicacion(self):
+        item = _item(properties={"s2:processing_baseline": "05.00"})
+        assert Scene.from_stac_item(item).processing_baseline == "05.00"
+
+
+class TestDeduplicateScenes:
+    """El catalogo conserva dos versiones del mismo granulo tras cada
+    reprocesado de la ESA; debe sobrevivir una sola, la mas moderna."""
+
+    def _scene(self, item_id, tile, baseline, day=1):
+        from datetime import UTC, datetime
+        return Scene.from_stac_item(_item(
+            id=item_id,
+            datetime=datetime(2019, 6, day, 10, 59, tzinfo=UTC),
+            properties={
+                "grid:code": f"MGRS-{tile}",
+                "s2:processing_baseline": baseline,
+                "earthsearch:boa_offset_applied": True,
+            },
+        ))
+
+    def test_sobrevive_la_linea_base_mas_alta(self):
+        vieja = self._scene("S2B_30SUH_20190601_0_L2A", "30SUH", "02.09")
+        nueva = self._scene("S2B_30SUH_20190601_1_L2A", "30SUH", "05.00")
+        assert deduplicate_scenes([vieja, nueva]) == [nueva]
+        # El orden de llegada no cambia el resultado.
+        assert deduplicate_scenes([nueva, vieja]) == [nueva]
+
+    def test_dos_digitos_ganan_a_un_digito(self):
+        """"10.00" > "05.00" aunque como texto ordene al reves."""
+        cinco = self._scene("a", "30SUH", "05.00")
+        diez = self._scene("b", "30SUH", "10.00")
+        assert deduplicate_scenes([diez, cinco]) == [diez]
+
+    def test_a_igual_linea_base_decide_el_identificador(self):
+        seq0 = self._scene("S2B_30SUH_20190601_0_L2A", "30SUH", "05.00")
+        seq1 = self._scene("S2B_30SUH_20190601_1_L2A", "30SUH", "05.00")
+        assert deduplicate_scenes([seq1, seq0]) == [seq1]
+
+    def test_tiles_y_fechas_distintos_no_se_tocan(self):
+        escenas = [
+            self._scene("a", "30SUH", "05.00", day=1),
+            self._scene("b", "30SUG", "05.00", day=1),
+            self._scene("c", "30SUH", "05.00", day=6),
+        ]
+        assert sorted(s.item_id for s in deduplicate_scenes(escenas)) == ["a", "b", "c"]
+
+    def test_devuelve_orden_cronologico(self):
+        tarde = self._scene("a", "30SUH", "05.00", day=6)
+        pronto = self._scene("b", "30SUH", "05.00", day=1)
+        assert [s.item_id for s in deduplicate_scenes([tarde, pronto])] == ["b", "a"]
 
 
 @pytest.mark.integration

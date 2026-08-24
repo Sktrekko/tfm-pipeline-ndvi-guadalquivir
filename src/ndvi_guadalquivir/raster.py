@@ -197,7 +197,11 @@ def read_ndvi(
     # La clasificacion de escena, a la malla de las bandas espectrales.
     scl = scl.rio.reproject_match(red, resampling=Resampling.nearest)
 
-    ndvi_values = compute_ndvi(red.values, nir.values, scl.values)
+    # El offset lo trae resuelto la escena: depende de su linea base de
+    # procesado y de si el proveedor ya lo aplico dentro del fichero.
+    ndvi_values = compute_ndvi(
+        red.values, nir.values, scl.values, add_offset=scene.boa_offset
+    )
     ndvi = xr.DataArray(
         ndvi_values,
         coords=red.coords,

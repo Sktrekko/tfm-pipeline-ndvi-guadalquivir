@@ -45,6 +45,18 @@ services:
       echo 'bucket ${S3_BUCKET:-lakehouse} listo'
       "
 
+  # Docker crea los volumenes como root, pero la imagen del catalogo corre con
+  # un usuario sin privilegios y no podria escribir su base de datos. Este paso
+  # ajusta el dueno del volumen antes de que arranque. Se hace asi, y no con
+  # `user: root` en el servicio, para no darle privilegios innecesarios a un
+  # proceso que va a estar horas escuchando en un puerto.
+  catalog-init:
+    image: alpine:3.21
+    container_name: ndvi-catalog-init
+    command: ["sh", "-c", "mkdir -p /catalog && chown -R 1000:1000 /catalog"]
+    volumes:
+      - iceberg-catalog:/catalog
+
   # El catalogo. Es quien sabe que version de cada tabla es la buena, y lo que
   # permite que dos procesos escriban a la vez sin pisarse.
   iceberg-rest:
@@ -53,9 +65,20 @@ services:
     depends_on:
       minio-init:
         condition: service_completed_successfully
+      catalog-init:
+        condition: service_completed_successfully
     ports:
       - "8181:8181"
+    volumes:
+      - iceberg-catalog:/catalog
     environment:
+      # El catalogo guarda en esta base de datos que version de cada tabla es la
+      # buena. Por defecto la imagen usa SQLite EN MEMORIA, lo que significa que
+      # al reiniciar el contenedor las tablas dejan de existir aunque sus
+      # ficheros sigan intactos en MinIO. Con una carga historica de horas eso
+      # no es aceptable, asi que se apunta a un fichero en un volumen.
+      CATALOG_URI: jdbc:sqlite:file:/catalog/iceberg.db
+      CATALOG_JDBC_SCHEMA__VERSION: V1
       CATALOG_WAREHOUSE: s3://${S3_BUCKET:-lakehouse}/warehouse
       CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
       CATALOG_S3_ENDPOINT: http://minio:9000
@@ -71,3 +94,4 @@ services:
 
 volumes:
   minio-data:
+  iceberg-catalog:

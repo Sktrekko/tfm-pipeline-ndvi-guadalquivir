@@ -1,0 +1,31 @@
+# Conexion de dbt al lakehouse.
+#
+# DuckDB actua de motor de consulta: monta el catalogo Iceberg en modo lectura
+# y materializa los resultados en un fichero local, que es lo que despues abre
+# el panel. Las credenciales salen del entorno para que el mismo perfil sirva
+# en local y contra AWS sin tocar nada.
+ndvi_guadalquivir:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "../data/warehouse.duckdb"
+      threads: 4
+      extensions:
+        - iceberg
+        - httpfs
+      secrets:
+        - type: s3
+          key_id: "{{ env_var('S3_ACCESS_KEY', 'minioadmin') }}"
+          secret: "{{ env_var('S3_SECRET_KEY', 'minioadmin') }}"
+          endpoint: "{{ env_var('S3_ENDPOINT_HOST', 'localhost:9000') }}"
+          url_style: path
+          use_ssl: false
+      attach:
+        - path: "{{ env_var('S3_BUCKET', 'lakehouse') }}"
+          alias: lake
+          type: iceberg
+          read_only: true
+          options:
+            endpoint: "{{ env_var('ICEBERG_CATALOG_URI', 'http://localhost:8181') }}"
+            authorization_type: none

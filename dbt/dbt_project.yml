@@ -1,0 +1,28 @@
+# Proyecto dbt: transformacion de la capa bronze en series y anomalias.
+#
+# Reparto de responsabilidades con el codigo Python, que conviene tener claro
+# porque es la pregunta habitual: Python lee imagenes y produce una fila por
+# municipio y fecha. A partir de ahi ya no hay pixeles, solo tablas, y todo lo
+# que queda es SQL. dbt se ocupa de ese SQL: en que orden corre cada consulta,
+# que comprobaciones tiene que pasar y como se documenta.
+name: ndvi_guadalquivir
+version: "0.1.0"
+profile: ndvi_guadalquivir
+
+model-paths: ["models"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  ndvi_guadalquivir:
+    +materialized: table
+    silver:
+      # Vistas: son limpieza y derivacion de columnas, no merece la pena
+      # materializar el resultado porque se recalcula al instante.
+      +schema: silver
+      +materialized: view
+    gold:
+      # Tablas: las agregaciones de ocho anos son caras y las consulta el panel
+      # muchas veces, asi que se calculan una vez.
+      +schema: gold
+      +materialized: table

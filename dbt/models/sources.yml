@@ -1,0 +1,26 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: >
+      Capa que escribe el pipeline de Python. Es el dato mas crudo que se
+      persiste: no se guardan las imagenes, porque volver a leerlas del
+      catalogo cuesta menos que almacenar cuatro terabytes.
+    database: lake
+    schema: bronze
+    tables:
+      - name: ndvi_zonal_daily
+        description: Una fila por municipio y fecha de adquisicion.
+        columns:
+          - name: zone_id
+            description: Codigo del INE del municipio.
+          - name: acquisition_date
+            description: Dia en que el satelite tomo la imagen.
+          - name: ndvi_mean
+            description: NDVI medio de los pixeles utiles del municipio.
+          - name: valid_pixel_fraction
+            description: Proporcion de pixeles sin nube ni sombra.
+      - name: zones
+        description: Dimension de municipios, con provincia y geometria en WKT.
+      - name: ingestion_log
+        description: Control de la carga historica, una fila por intento.

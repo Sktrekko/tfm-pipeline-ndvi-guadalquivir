@@ -26,15 +26,29 @@ class StacSettings:
 
     Se usa el catalogo de Element84, que expone los productos Sentinel-2 de
     Copernicus como COG (Cloud Optimized GeoTIFF) en AWS Open Data y permite
-    lectura anonima por ventanas. La coleccion `sentinel-2-c1-l2a` corresponde
-    al reprocesado Collection-1, con correccion geometrica mejorada en zonas
-    de relieve como Sierra Morena o Sierra Nevada.
+    lectura anonima por ventanas.
+
+    La coleccion por defecto es `sentinel-2-l2a` y no `sentinel-2-c1-l2a`, que
+    era la eleccion inicial, por una razon que solo aparecio al medir la
+    cobertura ano por ano: **el reprocesado Collection-1 no tiene ni una escena
+    de 2022** sobre la cuenca, ni siquiera sin filtrar por nubes, mientras que
+    2021 y 2023 traen del orden de 130 cada quincena.
+
+    Collection-1 es tecnicamente mejor, con correccion geometrica mas fina en
+    zonas de relieve como Sierra Morena. Pero un hueco de un ano entero es
+    inaceptable en una serie destinada a detectar anomalias, y ademas 2022 es
+    precisamente el ano de la sequia que el trabajo quiere documentar. Una
+    correccion geometrica algo peor se puede justificar en la memoria; un
+    agujero en el ano central del analisis, no.
+
+    El cambio no toca ni una linea de codigo: es el valor de una variable de
+    entorno.
     """
 
     api_url: str = field(default_factory=lambda: _env(
         "STAC_API_URL", "https://earth-search.aws.element84.com/v1"))
     collection: str = field(default_factory=lambda: _env(
-        "STAC_COLLECTION", "sentinel-2-c1-l2a"))
+        "STAC_COLLECTION", "sentinel-2-l2a"))
     max_cloud_cover: float = field(default_factory=lambda: float(_env(
         "STAC_MAX_CLOUD_COVER", "20")))
 

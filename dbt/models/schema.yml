@@ -1,0 +1,125 @@
+version: 2
+
+# Comprobaciones sobre los modelos.
+#
+# Son la segunda capa de calidad del proyecto y no se solapan con la primera.
+# Pandera vigila el DataFrame que sale del calculo en Python, fila a fila, antes
+# de guardarlo. Estas vigilan el SQL: que un join no haya duplicado filas, que
+# una agregacion no haya perdido municipios, que un valor derivado siga estando
+# donde tiene que estar. Un error de SQL no rompe ninguna regla de Pandera, y al
+# reves tampoco.
+
+models:
+
+  - name: stg_ndvi_daily
+    description: Observaciones diarias con las columnas de calendario derivadas.
+    columns:
+      - name: zone_id
+        description: Codigo del INE del municipio.
+        tests: [not_null]
+      - name: acquisition_date
+        tests: [not_null]
+      - name: ndvi_mean
+        description: NDVI medio del municipio ese dia.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range: {min_value: -1, max_value: 1}
+      - name: semana
+        description: Semana ISO, con la 53 unida a la 52.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range: {min_value: 1, max_value: 52}
+      - name: valid_pixel_fraction
+        tests:
+          - dbt_utils.accepted_range: {min_value: 0, max_value: 1}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [zone_id, acquisition_date]
+
+  - name: stg_zones
+    description: Municipios de la cuenca con la provincia resuelta.
+    columns:
+      - name: zone_id
+        tests: [not_null, unique]
+      - name: province_name
+        description: Nombre de la provincia; nunca debe quedar sin resolver.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [Albacete, Badajoz, Cadiz, 'Ciudad Real', Cordoba,
+                       Granada, Huelva, Jaen, Malaga, Sevilla]
+      - name: basin_overlap_fraction
+        description: Fraccion del termino dentro de la cuenca; por debajo de 0,5 no entra.
+        tests:
+          - dbt_utils.accepted_range: {min_value: 0.5, max_value: 1.0}
+
+  - name: ndvi_weekly
+    description: Serie semanal por municipio, ponderada por pixeles utiles.
+    columns:
+      - name: ndvi_ponderado
+        tests:
+          - not_null
+          - dbt_utils.accepted_range: {min_value: -1, max_value: 1}
+      - name: observaciones
+        description: Fechas que entraron en la semana.
+        tests:
+          - dbt_utils.accepted_range: {min_value: 1}
+      - name: zone_id
+        tests:
+          - relationships: {to: ref('stg_zones'), field: zone_id}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [zone_id, anio, semana]
+
+  - name: ndvi_climatology
+    description: Valor normal de cada municipio en cada semana del ano.
+    columns:
+      - name: ndvi_normal
+        tests:
+          - not_null
+          - dbt_utils.accepted_range: {min_value: -1, max_value: 1}
+      - name: ndvi_desviacion
+        description: >
+          Dispersion entre anos. Sobre un indice acotado en un intervalo de
+          longitud dos, una desviacion mayor que uno seria imposible.
+        tests:
+          - dbt_utils.accepted_range: {min_value: 0, max_value: 1}
+      - name: anios_observados
+        tests:
+          - dbt_utils.accepted_range: {min_value: 1, max_value: 12}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [zone_id, semana]
+
+  - name: ndvi_anomaly
+    description: Desviacion de cada semana respecto de su propia normal.
+    columns:
+      - name: anomalia_ndvi
+        description: >
+          Diferencia en unidades de NDVI. Como ambos terminos viven en [-1, 1],
+          la diferencia no puede salirse de [-2, 2].
+        tests:
+          - not_null
+          - dbt_utils.accepted_range: {min_value: -2, max_value: 2}
+      - name: categoria
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['muy por debajo', 'por debajo', 'normal',
+                       'por encima', 'muy por encima', 'sin referencia']
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [zone_id, anio, semana]
+      # El join con la normal no puede haber inventado ni perdido semanas.
+      - dbt_utils.equal_rowcount:
+          compare_model: ref('ndvi_weekly')
+
+  - name: ndvi_monthly_by_province
+    description: Resumen mensual por provincia, ponderado por superficie.
+    columns:
+      - name: ndvi_ponderado_area
+        tests:
+          - dbt_utils.accepted_range: {min_value: -1, max_value: 1}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [province_code, anio, mes]

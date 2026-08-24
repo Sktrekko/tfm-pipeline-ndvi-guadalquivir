@@ -30,6 +30,7 @@ en AWS basta con vaciar `S3_ENDPOINT_URL` y poner credenciales reales.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Iterable, Sequence
 from datetime import date
@@ -64,6 +65,9 @@ DAILY_TABLE = "ndvi_zonal_daily"
 
 #: Tabla de control: una fila por fecha intentada, con lo que paso.
 LOG_TABLE = "ingestion_log"
+
+#: Tabla de dimension: los municipios y sus atributos.
+ZONES_TABLE = "zones"
 
 #: Marca de tiempo de la carga. No viene del satelite sino del proceso, y sirve
 #: para saber que ejecucion escribio cada fila cuando algo no cuadre.
@@ -413,6 +417,81 @@ def settled_dates(table: Table | None = None) -> set[date]:
         for day, status in zip(scanned["acquisition_date"], scanned["status"], strict=True)
         if status in SETTLED_STATUSES
     }
+
+
+# ---------------------------------------------------------------------------
+# Dimension de zonas
+# ---------------------------------------------------------------------------
+
+
+def zones_schema() -> Schema:
+    """Esquema de la tabla de municipios.
+
+    Es una tabla de dimension: describe las zonas, no mide nada. Existe para
+    que las consultas no tengan que abrir un fichero cartografico. Sin ella,
+    agregar por provincia obligaria a cruzar el almacen con un GeoPackage
+    desde fuera, y dbt no sabe leer geometrias.
+
+    La geometria se guarda como texto en formato WKT. No es la forma mas
+    compacta, pero es la unica que entiende cualquier herramienta sin
+    extensiones: con eso el panel puede dibujar el mapa leyendo solo del
+    almacen, igual que lee las series.
+    """
+    return Schema(
+        NestedField(1, "zone_id", StringType(), required=True),
+        NestedField(2, "zone_name", StringType(), required=True),
+        NestedField(3, "province_code", StringType(), required=True),
+        NestedField(4, "area_km2", DoubleType(), required=True),
+        NestedField(5, "basin_overlap_fraction", DoubleType(), required=True),
+        NestedField(6, "geometry_wkt", StringType(), required=True),
+        NestedField(7, INGESTED_AT, TimestamptzType(), required=True),
+        identifier_field_ids=[1],
+    )
+
+
+def write_zones(zones, *, catalog: Catalog | None = None,
+                settings: Settings | None = None) -> int:
+    """Vuelca la capa de zonas al almacen, reemplazando lo que hubiera.
+
+    Se reescribe entera en lugar de anadir porque es una dimension pequena y
+    congelada: si algun dia cambia la capa, lo que se quiere es sustituirla, no
+    acumular dos versiones que despues habria que desambiguar.
+
+    Args:
+        zones: GeoDataFrame con las columnas de `aoi.load_zones`.
+        catalog: catalogo de tablas.
+        settings: configuracion del proyecto.
+
+    Returns:
+        Numero de municipios escritos.
+    """
+    settings = settings or get_settings()
+    catalog = catalog or get_catalog(settings)
+    namespace = settings.lakehouse.bronze_namespace
+    identifier = f"{namespace}.{ZONES_TABLE}"
+
+    catalog.create_namespace_if_not_exists(namespace)
+    with contextlib.suppress(NoSuchTableError):
+        catalog.drop_table(identifier)
+    table = catalog.create_table(identifier, schema=zones_schema())
+
+    frame = pd.DataFrame({
+        "zone_id": zones["zone_id"].astype(str),
+        "zone_name": zones["zone_name"].astype(str),
+        "province_code": zones["province_code"].astype(str),
+        "area_km2": zones["area_km2"].astype(float),
+        "basin_overlap_fraction": zones["basin_overlap_fraction"].astype(float),
+        "geometry_wkt": zones.geometry.to_wkt(),
+        INGESTED_AT: pd.Timestamp.now(tz="UTC"),
+    })
+
+    arrow_schema = table.schema().as_arrow()
+    table.append(pa.Table.from_arrays(
+        [pa.array(frame[field.name], type=field.type) for field in arrow_schema],
+        schema=arrow_schema,
+    ))
+    logger.info("Escritos %d municipios en %s", len(frame), identifier)
+    return len(frame)
 
 
 def duckdb_connection(

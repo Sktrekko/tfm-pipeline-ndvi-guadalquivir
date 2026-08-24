@@ -20,6 +20,14 @@ data/
 *.tif
 *.parquet
 
+# Artefactos de dbt. Las dependencias se restauran con `dbt deps` y el resto
+# son ficheros de compilacion; lo que si se versiona es `package-lock.yml`,
+# que fija las versiones exactas igual que hace `uv.lock` con Python.
+dbt/dbt_packages/
+dbt/target/
+dbt/logs/
+dbt/.user.yml
+
 # Entorno
 .env
 .DS_Store

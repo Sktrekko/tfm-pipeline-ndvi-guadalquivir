@@ -64,6 +64,31 @@ class TestMergeRasters:
         assert np.isfinite(combinado[0, 0])
         assert np.isnan(combinado[1:, 1:]).all()
 
+    def test_promedia_bien_muchas_escenas(self, make_raster):
+        """El resultado no depende de cuantas escenas entren.
+
+        La media se acumula escena a escena en lugar de apilarlas todas, que
+        es lo que mantiene la memoria constante durante la carga historica.
+        Este test fija que esa forma de calcularla sigue dando la media exacta.
+        """
+        valores = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        rasteres = [make_raster(np.full((10, 10), v, dtype=np.float32)) for v in valores]
+        combinado = merge_rasters(rasteres).values
+        assert combinado == pytest.approx(float(np.mean(valores)), abs=1e-5)
+
+    def test_cada_pixel_promedia_solo_sus_aportaciones(self, make_raster):
+        """Un hueco en una escena no debe rebajar la media de ese pixel.
+
+        La columna izquierda la ve una sola escena y la derecha las dos, asi
+        que cada una tiene que promediarse sobre un numero distinto de valores.
+        """
+        una = np.full((4, 4), 0.6, dtype=np.float32)
+        otra = np.full((4, 4), 0.2, dtype=np.float32)
+        otra[:, :2] = np.nan
+        combinado = merge_rasters([make_raster(una), make_raster(otra)]).values
+        assert combinado[:, :2] == pytest.approx(0.6)
+        assert combinado[:, 2:] == pytest.approx(0.4)
+
     def test_conserva_el_sistema_de_referencia(self, ndvi_raster, make_raster):
         otro = make_raster(np.full((10, 10), 0.3, dtype=np.float32))
         combinado = merge_rasters([ndvi_raster, otro])

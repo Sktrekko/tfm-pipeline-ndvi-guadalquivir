@@ -57,6 +57,11 @@ class ObjectStoreSettings:
     bucket: str = field(default_factory=lambda: _env("S3_BUCKET", "lakehouse"))
     region: str = field(default_factory=lambda: _env("S3_REGION", "us-east-1"))
 
+    @property
+    def warehouse_uri(self) -> str:
+        """Raiz del almacen de tablas dentro del bucket."""
+        return f"s3://{self.bucket}/warehouse"
+
 
 @dataclass(frozen=True)
 class ProcessingSettings:
@@ -77,10 +82,31 @@ class ProcessingSettings:
 
 
 @dataclass(frozen=True)
+class LakehouseSettings:
+    """Catalogo de tablas del lakehouse.
+
+    El catalogo y el almacen son dos servicios distintos a proposito. MinIO
+    guarda los bytes; el catalogo guarda que ficheros componen cada tabla en
+    cada momento. Esa separacion es lo que permite que una escritura a medias
+    nunca sea visible y que dos procesos escriban a la vez sin corromper nada.
+    """
+
+    catalog_uri: str = field(default_factory=lambda: _env(
+        "ICEBERG_CATALOG_URI", "http://localhost:8181"))
+    catalog_name: str = field(default_factory=lambda: _env(
+        "ICEBERG_CATALOG_NAME", "lakehouse"))
+    #: Capa de datos tal y como los produce el calculo en Python, sin agregar.
+    #: Las capas silver y gold las construye dbt a partir de esta.
+    bronze_namespace: str = field(default_factory=lambda: _env(
+        "ICEBERG_BRONZE_NAMESPACE", "bronze"))
+
+
+@dataclass(frozen=True)
 class Settings:
     stac: StacSettings = field(default_factory=StacSettings)
     store: ObjectStoreSettings = field(default_factory=ObjectStoreSettings)
     processing: ProcessingSettings = field(default_factory=ProcessingSettings)
+    lakehouse: LakehouseSettings = field(default_factory=LakehouseSettings)
     data_dir: Path = field(default_factory=lambda: Path(
         _env("DATA_DIR", str(PROJECT_ROOT / "data"))))
 

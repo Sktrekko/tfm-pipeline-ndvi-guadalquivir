@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import math
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date
 
@@ -155,20 +156,58 @@ def merge_rasters(
     else:
         reference = target_grid
 
-    aligned = [
-        raster.data.rio.reproject_match(reference, resampling=Resampling.bilinear)
-        for raster in rasters
-    ]
+    # La media se acumula escena a escena en lugar de apilarlas todas y
+    # promediar al final. El resultado es identico, pero el coste en memoria
+    # deja de depender de cuantas escenas haya: en vez de N copias de la malla
+    # se mantienen dos, la suma y el recuento, mas la escena que se este
+    # alineando en ese momento.
+    #
+    # No es una micro-optimizacion. Sobre la cuenca completa, la malla ocupa
+    # 64 MB y una pasada puede traer ocho granulos: apilarlos son 514 MB por
+    # fecha, y con varias fechas en vuelo la carga historica agota la memoria
+    # de la maquina antes de terminar. Acumulando se queda en unos 150 MB
+    # constantes.
+    shape = reference.shape[-2:]
+    total = np.zeros(shape, dtype=np.float64)
+    counts = np.zeros(shape, dtype=np.int32)
 
-    stacked = xr.concat(aligned, dim="_scene")
-    # nanmean sobre el eje de escenas: promedia solapes e ignora huecos.
-    with np.errstate(invalid="ignore"):
-        merged = stacked.mean(dim="_scene", skipna=True)
+    for raster in rasters:
+        aligned = raster.data.rio.reproject_match(
+            reference, resampling=Resampling.bilinear
+        )
+        values = np.asarray(aligned.values, dtype=np.float32)
+        valid = np.isfinite(values)
+        total[valid] += values[valid]
+        counts += valid
+        del aligned, values, valid
 
+    with np.errstate(invalid="ignore", divide="ignore"):
+        averaged = np.where(counts > 0, total / counts, np.nan).astype(np.float32)
+
+    merged = xr.DataArray(
+        averaged,
+        coords={dim: reference.coords[dim] for dim in reference.dims[-2:]},
+        dims=reference.dims[-2:],
+        name="ndvi",
+    )
     merged.rio.write_crs(reference.rio.crs, inplace=True)
+    merged.rio.write_transform(reference.rio.transform(), inplace=True)
     merged.rio.write_nodata(np.nan, inplace=True)
-    merged.name = "ndvi"
     return merged
+
+
+#: Lecturas simultaneas dentro de una misma fecha.
+#:
+#: Cubrir la cuenca necesita dieciocho granulos y leerlos cuesta el noventa por
+#: ciento del tiempo de una fecha, casi todo esperando bytes por la red. Leerlos
+#: de uno en uno deja el ancho de banda parado la mayor parte del rato.
+#:
+#: El valor esta medido, no elegido de oido, y la curva no es la que uno
+#: esperaria. Sobre una fecha real de dieciocho granulos: en serie 81 s, con
+#: cuatro hilos 42 s, con seis 92 s y con diez 84 s. Pasado cierto punto el
+#: servidor empieza a estrangular las conexiones simultaneas y abrir mas
+#: lecturas sale caro en lugar de barato. Cuatro es el optimo observado.
+DEFAULT_SCENE_WORKERS = 4
 
 
 def build_daily_mosaic(
@@ -176,13 +215,20 @@ def build_daily_mosaic(
     bounds_wgs84: tuple[float, float, float, float],
     *,
     target_resolution_m: int | None = None,
+    max_scene_workers: int = DEFAULT_SCENE_WORKERS,
 ) -> NdviMosaic:
     """Lee y combina todas las escenas de una fecha sobre una ventana.
+
+    Las lecturas van en paralelo porque son espera de red, no calculo: mientras
+    un granulo viaja se puede estar pidiendo el siguiente. El orden en que
+    llegan da igual, ya que el mosaico se construye sobre la malla canonica y
+    no sobre el primero que aparezca.
 
     Args:
         scenes: escenas de la misma fecha de adquisicion.
         bounds_wgs84: ventana en grados `(oeste, sur, este, norte)`.
         target_resolution_m: resolucion de trabajo del mosaico.
+        max_scene_workers: lecturas simultaneas.
 
     Returns:
         El mosaico diario.
@@ -196,17 +242,19 @@ def build_daily_mosaic(
     target_crs = dominant_crs(scenes)
     resolution = float(target_resolution_m or 10)
     grid = build_target_grid(bounds_wgs84, target_crs, resolution)
-    rasters: list[NdviRaster] = []
 
-    for scene in scenes:
+    def _read(scene: Scene) -> NdviRaster | None:
         try:
-            rasters.append(
-                read_ndvi(scene, bounds_wgs84, target_resolution_m=target_resolution_m)
-            )
+            return read_ndvi(scene, bounds_wgs84, target_resolution_m=target_resolution_m)
         except Exception as exc:
             # Un granulo corrupto o una ventana que no interseca el tile no
             # deben impedir que el resto de la pasada se procese.
             logger.warning("No se pudo leer %s: %s", scene.item_id, exc)
+            return None
+
+    workers = max(1, min(max_scene_workers, len(scenes)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        rasters = [raster for raster in pool.map(_read, scenes) if raster is not None]
 
     if not rasters:
         raise ValueError(

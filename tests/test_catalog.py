@@ -6,7 +6,8 @@ que la suite es determinista y no depende de la red.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from dataclasses import FrozenInstanceError
+from datetime import UTC, datetime
 
 import pytest
 from pystac import Asset, Item
@@ -26,7 +27,7 @@ def _item(**overrides) -> Item:
         id=overrides.pop("id", "S2A_T30SUH_20240601T105916_L2A"),
         geometry=None,
         bbox=[-5.0, 37.5, -4.0, 38.5],
-        datetime=overrides.pop("datetime", datetime(2024, 6, 1, 10, 59, tzinfo=timezone.utc)),
+        datetime=overrides.pop("datetime", datetime(2024, 6, 1, 10, 59, tzinfo=UTC)),
         properties=props,
     )
     for name in overrides.pop("assets", ["red", "nir", "scl"]):
@@ -73,7 +74,7 @@ class TestSceneFromStacItem:
     def test_es_inmutable(self):
         """`Scene` es un dataclass congelado: nadie muta una escena por error."""
         scene = Scene.from_stac_item(_item())
-        with pytest.raises(Exception):
+        with pytest.raises(FrozenInstanceError):
             scene.cloud_cover = 99.0
 
 
@@ -84,7 +85,7 @@ class TestGroupByDate:
             Scene.from_stac_item(_item(id="b", properties={"grid:code": "MGRS-30SUG"})),
             Scene.from_stac_item(_item(
                 id="c",
-                datetime=datetime(2024, 6, 6, 10, 59, tzinfo=timezone.utc),
+                datetime=datetime(2024, 6, 6, 10, 59, tzinfo=UTC),
             )),
         ]
         grupos = dict(group_by_date(escenas))
@@ -95,7 +96,7 @@ class TestGroupByDate:
         escenas = [
             Scene.from_stac_item(_item(
                 id=str(day),
-                datetime=datetime(2024, 6, day, 10, 0, tzinfo=timezone.utc),
+                datetime=datetime(2024, 6, day, 10, 0, tzinfo=UTC),
             ))
             for day in (10, 3, 7)
         ]

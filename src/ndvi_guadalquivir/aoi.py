@@ -89,7 +89,14 @@ def load_zones(path: str | Path, *, clip_to_basin: bool = True) -> gpd.GeoDataFr
         raise ValueError(f"La capa {path} no contiene zonas dentro de la cuenca")
 
     zones["zone_id"] = zones["zone_id"].astype(str)
-    return zones.reset_index(drop=True)[list(REQUIRED_ZONE_COLUMNS)]
+
+    # Las columnas obligatorias van primero y el resto se conserva. Esos
+    # extras (provincia, superficie, solape con la cuenca) no los usa el
+    # calculo del NDVI, pero son justo lo que permite a dbt subir de grano
+    # despues sin tener que volver a leer una sola imagen.
+    extra = [c for c in zones.columns if c not in REQUIRED_ZONE_COLUMNS]
+    ordered = ["zone_id", "zone_name", *extra, "geometry"]
+    return zones.reset_index(drop=True)[ordered]
 
 
 def bounds_of(

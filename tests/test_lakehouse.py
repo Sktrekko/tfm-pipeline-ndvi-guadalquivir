@@ -218,3 +218,117 @@ class TestReplaceDates:
             pd.DataFrame(columns=DAILY_COLUMNS), [date(2024, 4, 10)], table=table
         )
         assert len(table.refresh().scan().to_pandas()) == 0
+
+
+class TestRegistroDeIngesta:
+    """El registro es la memoria de la carga: sin el no hay reanudacion."""
+
+    @pytest.fixture
+    def log_table(self, catalog):
+        from ndvi_guadalquivir.lakehouse import ensure_log_table
+        return ensure_log_table(catalog)
+
+    def _record(self, day, status, message=None):
+        return {
+            "acquisition_date": day,
+            "status": status,
+            "scene_count": 2,
+            "row_count": 30 if status == "ok" else 0,
+            "duration_seconds": 1.5,
+            "message": message,
+        }
+
+    def test_crear_la_tabla_es_idempotente(self, catalog, log_table):
+        from ndvi_guadalquivir.lakehouse import ensure_log_table
+        assert ensure_log_table(catalog).name() == log_table.name()
+
+    def test_sin_registros_no_escribe_nada(self, log_table):
+        from ndvi_guadalquivir.lakehouse import append_log
+        assert append_log([], table=log_table) == 0
+        assert log_table.current_snapshot() is None
+
+    def test_ok_y_empty_cuentan_como_resueltas_error_no(self, log_table):
+        """Es la semantica de la que depende toda la reanudacion: una fecha
+        nublada no debe reintentarse, una fallida si."""
+        from ndvi_guadalquivir.lakehouse import append_log, settled_dates
+        append_log([
+            self._record(date(2024, 6, 1), "ok"),
+            self._record(date(2024, 6, 6), "empty"),
+            self._record(date(2024, 6, 11), "error", "granulo corrupto"),
+        ], table=log_table)
+
+        assert settled_dates(log_table) == {date(2024, 6, 1), date(2024, 6, 6)}
+
+    def test_un_error_que_luego_sale_bien_queda_resuelto(self, log_table):
+        """El registro es de solo anadir: la fecha con dos entradas cuenta como
+        resuelta si alguna lo dice, sin borrar la historia del primer intento."""
+        from ndvi_guadalquivir.lakehouse import append_log, settled_dates
+        day = date(2024, 6, 11)
+        append_log([self._record(day, "error", "corte de red")], table=log_table)
+        assert settled_dates(log_table) == set()
+
+        append_log([self._record(day, "ok")], table=log_table)
+        assert settled_dates(log_table) == {day}
+        assert len(log_table.scan().to_arrow()) == 2
+
+    def test_registro_vacio_devuelve_conjunto_vacio(self, log_table):
+        from ndvi_guadalquivir.lakehouse import settled_dates
+        assert settled_dates(log_table) == set()
+
+
+class TestDimensionDeZonas:
+    """La tabla de municipios que permite consultar sin abrir cartografia."""
+
+    @pytest.fixture
+    def zone_layer(self):
+        import geopandas as gpd
+        from shapely.geometry import box
+
+        return gpd.GeoDataFrame(
+            {
+                "zone_id": ["14021", "14049"],
+                "zone_name": ["Cordoba", "Montilla"],
+                "province_code": ["14", "14"],
+                "area_km2": [1254.9, 168.3],
+                "basin_overlap_fraction": [1.0, 1.0],
+            },
+            geometry=[box(0, 0, 1, 1), box(1, 0, 2, 1)],
+            crs="EPSG:4326",
+        )
+
+    def test_escribe_una_fila_por_municipio(self, catalog, zone_layer):
+        from ndvi_guadalquivir.config import get_settings
+        from ndvi_guadalquivir.lakehouse import write_zones
+
+        written = write_zones(zone_layer, catalog=catalog, settings=get_settings())
+        assert written == 2
+
+    def test_reescribe_en_vez_de_acumular(self, catalog, zone_layer):
+        """Es una dimension congelada: dos cargas no deben dejar dos copias."""
+        from ndvi_guadalquivir.config import get_settings
+        from ndvi_guadalquivir.lakehouse import ZONES_TABLE, write_zones
+
+        settings = get_settings()
+        write_zones(zone_layer, catalog=catalog, settings=settings)
+        write_zones(zone_layer, catalog=catalog, settings=settings)
+
+        namespace = settings.lakehouse.bronze_namespace
+        table = catalog.load_table(f"{namespace}.{ZONES_TABLE}")
+        assert len(table.scan().to_arrow()) == 2
+
+    def test_la_geometria_sobrevive_como_wkt_legible(self, catalog, zone_layer):
+        """El panel dibuja el mapa leyendo solo del almacen: el texto WKT debe
+        reconstruir el poligono original."""
+        from shapely import wkt
+
+        from ndvi_guadalquivir.config import get_settings
+        from ndvi_guadalquivir.lakehouse import ZONES_TABLE, write_zones
+
+        settings = get_settings()
+        write_zones(zone_layer, catalog=catalog, settings=settings)
+
+        namespace = settings.lakehouse.bronze_namespace
+        table = catalog.load_table(f"{namespace}.{ZONES_TABLE}")
+        rows = table.scan().to_arrow().to_pydict()
+        geometry = wkt.loads(rows["geometry_wkt"][rows["zone_id"].index("14021")])
+        assert geometry.equals(zone_layer.geometry.iloc[0])

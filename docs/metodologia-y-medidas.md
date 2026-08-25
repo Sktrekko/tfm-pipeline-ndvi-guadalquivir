@@ -89,7 +89,43 @@ Abrir por segunda vez el mismo COG pasa de **1,050 s a 0,006 s**, porque GDAL
 guarda la cabecera. Es la razón de que convenga agrupar las lecturas por fecha
 y no por zona.
 
-[7.2 Métricas, 6.2 Preparación]
+### 2.6 El cuello de botella es la latencia, no el ancho de banda
+
+Conviene medirlo porque la intuición falla: con una carga que pasa el 92% del
+tiempo leyendo por red, parece que una conexión más rápida la aceleraría.
+
+Medido durante la carga, el proceso consume **648 KB/s, unos 5 Mbps**. Es una
+fracción minúscula de cualquier conexión doméstica actual, así que el ancho de
+banda no está ni cerca de saturarse.
+
+Lo que sí pesa es el tiempo de ida y vuelta hasta el servidor. Pidiendo un
+kilobyte a uno de los ficheros reales:
+
+| Fase | Tiempo |
+|---|---|
+| Establecer la conexión | 0,18 s |
+| Negociación TLS | 0,35 s acumulado |
+| Primer byte recibido | **0,54 a 0,65 s** |
+| Total | prácticamente igual al primer byte |
+
+Es decir, **más de medio segundo antes de recibir el primer dato, y transferir
+el contenido no cuesta nada apreciable**. La causa es geográfica: el archivo
+está alojado en la región de AWS en Oregón y el proceso corre en España, de modo
+que cada petición cruza el Atlántico. Leer una escena implica varias peticiones
+por banda (cabecera, índice de bloques y los bloques en sí), y ahí se van los
+14 segundos de trabajo por escena, casi todos esperando.
+
+Esto explica también por qué subir de cuatro hilos empeora el rendimiento
+(apartado 2.3): el problema nunca fue la capacidad del enlace.
+
+La consecuencia práctica es que **mejorar la conexión contratada no aceleraría
+la carga**. Lo que la aceleraría de forma drástica es ejecutar el pipeline en la
+misma región donde viven los datos, donde la ida y vuelta baja de unos 180
+milisegundos a menos de uno. Es un argumento fuerte a favor de la portabilidad
+del diseño: el mismo código, sin cambios, correría en AWS contra los mismos
+ficheros y tardaría una fracción.
+
+[7.2 Métricas, 5.4 Costes, 7.5 Futuras líneas]
 
 ## 3. Cuánto se tarda de verdad
 

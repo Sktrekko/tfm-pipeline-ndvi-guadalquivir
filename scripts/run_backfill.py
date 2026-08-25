@@ -41,6 +41,11 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         handlers=[logging.FileHandler(LOG_PATH), logging.StreamHandler()],
     )
+    # Rasterio anuncia por INFO cada apertura de un COG remoto. Son dos lineas
+    # por granulo, unas cuarenta mil en una carga completa, y sepultan el
+    # progreso real. Se suben a WARNING para que el log siga siendo legible.
+    for noisy in ("rasterio.session", "rasterio._env", "botocore", "urllib3"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
     zones = load_zones(ZONES_PATH)
     report = run_backfill(args.start, args.end, zones, max_dates=args.max_dates)

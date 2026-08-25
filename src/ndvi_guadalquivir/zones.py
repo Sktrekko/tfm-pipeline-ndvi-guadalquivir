@@ -285,7 +285,11 @@ def select_basin_municipalities(
 
     total_area = projected.geometry.area
     inside_area = projected.geometry.intersection(basin_geometry).area
-    overlap = (inside_area / total_area).fillna(0.0)
+    # La interseccion nunca puede superar al total, pero el area de la
+    # geometria recortada y la del original se calculan por caminos distintos y
+    # el cociente sale en 1,0000000000000044 para los municipios que caen
+    # enteros dentro. El recorte deja la fraccion en el rango que promete.
+    overlap = (inside_area / total_area).fillna(0.0).clip(upper=1.0)
 
     selected = municipalities.assign(
         area_km2=(total_area / 1e6).to_numpy(),

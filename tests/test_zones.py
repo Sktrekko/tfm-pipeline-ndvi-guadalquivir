@@ -73,6 +73,17 @@ class TestSelectBasinMunicipalities:
         dentro = selected[selected["zone_id"] == "14001"].iloc[0]
         assert dentro["basin_overlap_fraction"] == pytest.approx(1.0, abs=1e-6)
 
+    def test_el_solape_nunca_pasa_de_uno(self, municipalities, basin):
+        """El area recortada y la original se calculan por caminos distintos.
+
+        Para un municipio entero dentro de la cuenca el cociente sale en
+        1,0000000000000044, que es cero a efectos practicos pero rompe el
+        contrato que promete una fraccion. La comprobacion de dbt sobre el
+        rango [0,5, 1] lo cazo con 181 municipios reales.
+        """
+        selected = select_basin_municipalities(municipalities, basin)
+        assert selected["basin_overlap_fraction"].max() <= 1.0
+
     def test_el_partido_por_la_mitad_entra_por_los_pelos(self, municipalities, basin):
         """Con el umbral por defecto del 50 %, la mitad justa se acepta."""
         selected = select_basin_municipalities(municipalities, basin)

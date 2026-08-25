@@ -180,6 +180,31 @@ class TestDeduplicateScenes:
         seq1 = self._scene("S2B_30SUH_20190601_1_L2A", "30SUH", "05.00")
         assert deduplicate_scenes([seq1, seq0]) == [seq1]
 
+    def test_una_version_ilegible_no_gana_por_ser_mas_moderna(self):
+        """Caso real que costo dos fechas de la serie el 25 de agosto.
+
+        El reprocesado a linea base 05.00 apunta al bucket antiguo de JP2, que
+        no es publico, mientras que la version 02.11 trae el COG. Preferir la
+        linea base sin mirar el enlace dejaba la fecha sin ninguna escena
+        legible.
+        """
+        import dataclasses
+
+        legible = self._scene("S2A_30STH_20190326_0_L2A", "30STH", "02.11")
+        moderna = self._scene("S2A_30STH_20190326_1_L2A", "30STH", "05.00")
+        rota = dataclasses.replace(
+            moderna,
+            red_href="s3://sentinel-s2-l2a/tiles/30/S/TH/2019/3/26/1/R10m/B04.jp2",
+        )
+        assert deduplicate_scenes([legible, rota]) == [legible]
+        assert deduplicate_scenes([rota, legible]) == [legible]
+
+    def test_entre_dos_legibles_sigue_mandando_la_linea_base(self):
+        """El arreglo anterior no debe desactivar el criterio original."""
+        vieja = self._scene("S2B_30SUH_20190601_0_L2A", "30SUH", "02.09")
+        nueva = self._scene("S2B_30SUH_20190601_1_L2A", "30SUH", "05.00")
+        assert deduplicate_scenes([vieja, nueva]) == [nueva]
+
     def test_tiles_y_fechas_distintos_no_se_tocan(self):
         escenas = [
             self._scene("a", "30SUH", "05.00", day=1),

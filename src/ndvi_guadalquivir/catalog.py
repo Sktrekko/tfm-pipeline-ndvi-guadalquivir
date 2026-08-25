@@ -171,9 +171,14 @@ def deduplicate_scenes(scenes: Sequence[Scene]) -> list[Scene]:
     aportar informacion.
 
     Sobrevive la linea base de procesado mas alta, que es la correccion mas
-    moderna. A igualdad de linea base decide el identificador, que lleva un
-    numero de secuencia creciente, de modo que el resultado no depende del
-    orden en que el catalogo devuelva los items.
+    moderna, pero solo entre las versiones que se pueden leer. Algunos
+    reprocesados apuntan al bucket antiguo de JP2 (`s3://sentinel-s2-l2a`),
+    que no es publico, en vez de al COG, y como suelen ser los de linea base
+    mas alta se llevaban por delante a la unica version legible. Medido en la
+    carga del 25 de agosto: 9 escenas de 3.100, un 0,3%, y dos fechas perdidas
+    enteras por tener una sola escena. A igualdad de todo decide el
+    identificador, que lleva un numero de secuencia creciente, de modo que el
+    resultado no depende del orden en que el catalogo devuelva los items.
     """
     survivors: dict[tuple[str, date], Scene] = {}
     for scene in scenes:
@@ -192,8 +197,27 @@ def deduplicate_scenes(scenes: Sequence[Scene]) -> list[Scene]:
     return kept
 
 
-def _dedup_rank(scene: Scene) -> tuple[tuple[int, ...], str]:
-    return _baseline_tuple(scene.processing_baseline), scene.item_id
+def _dedup_rank(scene: Scene) -> tuple[bool, tuple[int, ...], str]:
+    return (
+        _is_readable(scene),
+        _baseline_tuple(scene.processing_baseline),
+        scene.item_id,
+    )
+
+
+def _is_readable(scene: Scene) -> bool:
+    """Indica si las tres bandas de la escena se pueden abrir de verdad.
+
+    El catalogo publica dos formas de enlace: la del COG, servido por HTTP, y
+    la del archivo antiguo en JP2, que vive en un bucket de pago por peticion
+    al que no se llega. La segunda se reconoce porque el enlace es `s3://` en
+    lugar de `https://`. No es una comprobacion de red: solo mira la forma del
+    enlace, asi que no cuesta nada y se puede hacer para cada escena.
+    """
+    return not any(
+        href.startswith("s3://")
+        for href in (scene.red_href, scene.nir_href, scene.scl_href)
+    )
 
 
 def _baseline_tuple(baseline: str) -> tuple[int, ...]:

@@ -4,7 +4,7 @@ Pipeline de ingeniería de datos que calcula series temporales del índice **NDV
 sobre la **cuenca del Guadalquivir** a partir de imágenes **Sentinel-2** del
 programa **Copernicus**, sin descargar las escenas completas.
 
-Trabajo Fin de Máster — Máster en Big Data & Data Engineering, UCM / NTIC.
+Trabajo Fin de Máster. Máster en Big Data & Data Engineering, UCM / NTIC.
 Autor: Darío Rodríguez González. Tutores: Jorge Centeno y Alberto González.
 
 ## El problema

@@ -275,6 +275,60 @@ class TestRegistroDeIngesta:
         from ndvi_guadalquivir.lakehouse import settled_dates
         assert settled_dates(log_table) == set()
 
+    def test_sustituir_una_entrada_la_devuelve_al_pendiente(self, log_table):
+        """El caso de la recuperacion: una fecha se proceso con codigo roto y
+        quedo como resuelta. Mientras siga asi, ninguna ejecucion futura la
+        reintentara, de modo que arreglar el codigo no basta."""
+        from ndvi_guadalquivir.lakehouse import (
+            append_log,
+            replace_log_entries,
+            settled_dates,
+        )
+        day = date(2024, 6, 1)
+        append_log([self._record(day, "ok")], table=log_table)
+        assert settled_dates(log_table.refresh()) == {day}
+
+        replace_log_entries(
+            [self._record(day, "error", "granulo ilegible")], [day], table=log_table
+        )
+        assert settled_dates(log_table.refresh()) == set()
+        assert len(log_table.scan().to_arrow()) == 1
+
+    def test_sustituir_no_toca_las_demas_fechas(self, log_table):
+        from ndvi_guadalquivir.lakehouse import append_log, replace_log_entries
+        append_log([
+            self._record(date(2024, 6, 1), "ok"),
+            self._record(date(2024, 6, 6), "ok"),
+        ], table=log_table)
+
+        replace_log_entries(
+            [self._record(date(2024, 6, 1), "empty")], [date(2024, 6, 1)],
+            table=log_table,
+        )
+        leido = log_table.refresh().scan().to_pandas()
+        superviviente = leido[leido["acquisition_date"] == date(2024, 6, 6)]
+        assert superviviente["status"].tolist() == ["ok"]
+        assert len(leido) == 2
+
+    def test_sustituir_sin_fechas_no_hace_nada(self, log_table):
+        from ndvi_guadalquivir.lakehouse import replace_log_entries
+        assert replace_log_entries([self._record(date(2024, 6, 1), "ok")], [],
+                                   table=log_table) == 0
+        assert log_table.current_snapshot() is None
+
+    def test_sustituir_es_idempotente(self, log_table):
+        """Relanzar la recuperacion deja el registro igual, no lo duplica."""
+        from ndvi_guadalquivir.lakehouse import append_log, replace_log_entries
+        day = date(2024, 6, 1)
+        append_log([self._record(day, "ok")], table=log_table)
+        for _ in range(2):
+            replace_log_entries(
+                [self._record(day, "empty")], [day], table=log_table.refresh()
+            )
+        leido = log_table.refresh().scan().to_pandas()
+        assert len(leido) == 1
+        assert leido["status"].tolist() == ["empty"]
+
 
 class TestDimensionDeZonas:
     """La tabla de municipios que permite consultar sin abrir cartografia."""

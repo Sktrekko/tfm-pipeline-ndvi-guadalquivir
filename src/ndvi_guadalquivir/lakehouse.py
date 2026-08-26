@@ -549,3 +549,62 @@ def duckdb_connection(
     )
     logger.debug("DuckDB conectado al catalogo %s como %s", lake.catalog_uri, alias)
     return connection
+
+
+def replace_log_entries(
+    records: Sequence[dict],
+    dates: Iterable[date],
+    *,
+    table: Table | None = None,
+) -> int:
+    """Sustituye las entradas del registro de unas fechas concretas.
+
+    El registro es de solo anadir mientras la carga avanza, y esta bien que lo
+    sea: cada intento queda documentado. Pero al recuperar una fecha que se
+    proceso con codigo defectuoso, la entrada vieja no es historia util sino
+    una mentira operativa. Mientras siga ahi con estado `ok` o `empty`,
+    `settled_dates` la da por resuelta y ninguna ejecucion futura volvera a
+    intentarla.
+
+    Se borra y se escribe en la misma instantanea por el mismo motivo que en
+    `replace_dates`: entre las dos operaciones, una fecha sin entrada y sin
+    datos es un hueco que la siguiente ejecucion rellenaria por su cuenta, pero
+    una fecha marcada dos veces obliga a desempatar.
+
+    Args:
+        records: entradas nuevas, en el formato de `DateOutcome.as_log_record`.
+        dates: fechas cuyas entradas anteriores hay que retirar.
+        table: tabla de destino.
+
+    Returns:
+        Numero de entradas escritas.
+    """
+    from pyiceberg.expressions import EqualTo, Or
+
+    dates = list(dates)
+    if not dates:
+        return 0
+
+    table = table or ensure_log_table()
+    condition = EqualTo("acquisition_date", dates[0])
+    for day in dates[1:]:
+        condition = Or(condition, EqualTo("acquisition_date", day))
+
+    frame = pd.DataFrame.from_records(list(records))
+    frame[INGESTED_AT] = pd.Timestamp.now(tz="UTC")
+    frame["acquisition_date"] = pd.to_datetime(frame["acquisition_date"]).dt.date
+    if "message" not in frame.columns:
+        frame["message"] = None
+
+    arrow_schema = table.schema().as_arrow()
+    batch = pa.Table.from_arrays(
+        [pa.array(frame[field.name], type=field.type) for field in arrow_schema],
+        schema=arrow_schema,
+    )
+
+    with table.transaction() as transaction:
+        transaction.delete(delete_filter=condition)
+        transaction.append(batch)
+
+    logger.info("Reemplazadas %d entradas del registro", len(frame))
+    return len(frame)

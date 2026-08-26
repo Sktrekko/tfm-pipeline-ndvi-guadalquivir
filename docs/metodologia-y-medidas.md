@@ -192,6 +192,37 @@ Medido durante la carga: **20 escenas de unas 6.000, un 0,3%**, con varias
 fechas perdidas enteras por tener una sola escena disponible. Se corrigió
 haciendo que la legibilidad del enlace pese más que la línea base.
 
+**Cuánto daño hizo de verdad.** La carga del 25 de agosto corrió con el código
+anterior al arreglo, así que hubo que reprocesar las 40 fechas afectadas. La
+lista no sale del registro de ingesta sino del log, y esa es la parte sutil: una
+fecha que perdió una escena de diez se mosaicó igual con las nueve restantes y
+quedó anotada como correcta, indistinguible de las buenas. Solo las fechas de
+una única escena fallaron de forma visible.
+
+El reproceso permite medir el sesgo exacto, porque Iceberg conserva la versión
+anterior de la tabla y se pueden comparar las dos instantáneas fila a fila:
+
+| | |
+|---|---|
+| Filas comparadas | 974 |
+| Con NDVI idéntico | 962 |
+| Con NDVI distinto | 12, todas del 10 de junio de 2021 |
+| Diferencia máxima | **0,0031** |
+| Diferencia media | 0,000013 |
+
+El caso extremo es Almonte, cuya cobertura útil pasó del 90,8% al 99,7% del
+término al recuperar el granulo que le faltaba, y su NDVI medio de 0,3206 a
+0,3175. La diferencia máxima está en el mismo orden que el sesgo de 0,0027 por
+leer overviews, es decir, por debajo del ruido del sensor. El fallo era real
+pero su efecto sobre el resultado es despreciable.
+
+**Once fechas no se pueden recuperar.** Son días en que el satélite hizo una
+sola pasada sobre la cuenca y esa única escena solo existe en el bucket antiguo.
+No hay copia legible que elegir, así que fallan en el momento de abrir el
+fichero. Es un límite del archivo público y no del método: sobre 1.860 fechas
+del intervalo son un 0,6%, repartidas y sin agrupar en ninguna estación, de modo
+que no sesgan la serie temporal.
+
 ### 4.3 Otras trampas documentadas
 
 - **NDVI de 1.476.395.** En agua profunda el denominador tiende a cero. Se
@@ -308,7 +339,7 @@ considerablemente más sólido.
 ## Apéndice: cierre de la carga
 
 Generado automáticamente al terminar la carga histórica, el
-26 de August de 2026 a las 02:29.
+26 de agosto de 2026 a las 02:29.
 
 ```
 2026-08-26 02:29:12,428 INFO ndvi_guadalquivir.pipeline: Carga terminada. 1860 fechas en el intervalo, 8 ya cargadas, 1852 procesadas (1292 con dato, 546 sin dato util, 14 con error). 184872 filas escritas en 905.3 min, 114.8 s por fecha.

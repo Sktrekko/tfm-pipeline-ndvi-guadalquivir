@@ -294,47 +294,132 @@ aplanaría la curva, y una máscara defectuosa daría valores absurdos en invier
 
 [7.1 Logros, 7.2 Métricas]
 
-## 7. Resultado: la sequía se ve, pero un año después
+## 7. Resultado: la sequía se encadena de un año al siguiente
 
-Media de NDVI de primavera (abril y mayo) por año, sobre el conjunto de la
-cuenca:
+Este apartado se apoya en `ndvi_anomaly`, que compara cada municipio con su
+propia normal de esa misma semana ISO. Es el indicador fino del trabajo: la
+media de la cuenca mezcla el olivar de Jaén con la marisma de Doñana, mientras
+que la anomalía pregunta a cada sitio si está peor de lo que suele estar él.
 
-| 2018 | 2019 | 2020 | 2021 | 2022 | 2023 |
-|---|---|---|---|---|---|
-| 0,421 | 0,378 | 0,404 | 0,377 | 0,413 | **0,345** |
+### 7.1 Los nueve años ordenados
 
-El hallazgo tiene dos partes y conviene contarlas juntas.
+Diferencia de cada primavera (semanas 14 a 22, abril y mayo) respecto a la media
+que ese mismo municipio da en las demás primaveras, y porcentaje de municipios
+que quedaron por debajo de su propia media:
 
-**2022 no destaca como año seco**, pese a ser el año en que se declaró la
-sequía. Aparece como el segundo más verde de la serie.
+| Año | Diferencia | Municipios por debajo |
+|---|---|---|
+| 2025 | +0,0280 | 19% |
+| 2026 | +0,0237 | 19% |
+| 2020 | +0,0204 | 18% |
+| 2018 | +0,0203 | 27% |
+| 2024 | +0,0203 | 17% |
+| 2022 | +0,0112 | 41% |
+| 2019 | -0,0226 | 88% |
+| 2021 | -0,0330 | 89% |
+| **2023** | **-0,0683** | **98%** |
 
-**2023 se descuelga del resto de forma inequívoca.** Está 0,032 por debajo del
-año más flojo anterior y 0,076 por debajo de 2018. Como referencia de escala,
-entre los cinco años anteriores toda la variación cabía en 0,044: 2023 no es un
-matiz dentro del rango normal, es otro régimen.
+La última columna es la que más dice. En un año corriente queda por debajo de su
+media uno de cada cinco municipios, que es lo que cabe esperar del ruido. En
+2023 quedaron 437 de 445, de modo que la caída no sale de unos pocos sitios muy
+malos tirando de la media: es la cuenca entera a la vez.
 
-La lectura agronómica es que **la sequía se declara cuando fallan las lluvias,
-pero el daño a la vegetación se mide al ciclo siguiente**. La primavera de 2023
-fue excepcionalmente seca y cálida y arrasó el cereal de secano andaluz. El
-NDVI mide el estado de la planta, no la precipitación, así que retrata el
-segundo momento.
+Contrastado con una prueba t pareada sobre los 445 municipios, la caída de 2023
+da t = -32,2 y una d de Cohen de -1,53. El umbral habitual para hablar de efecto
+grande es 0,8.
 
-Dos cautelas antes de dar esto por cerrado. Es una media sin ponderar, donde
-una fecha medio nublada con diez municipios pesa igual que una despejada con
-cuatrocientos; el indicador fino del trabajo es la anomalía de cada municipio
-frente a su propia normal histórica. Y promediar los 445 municipios mezcla
-secano con regadío, que es precisamente donde debería estar la diferencia: el
-regadío mantiene su verdor a costa del embalse mientras el secano se seca.
+### 7.2 El fallo tiene fecha
 
-Que la señal aparezca ya en la medición más tosca posible es, en sí mismo, un
-indicio de que el método funciona.
+Semanas de 2023 en las que más de la mitad de la cuenca estuvo por debajo de lo
+normal, con el porcentaje que cayó por debajo de una desviación:
 
-Queda pendiente contrastarlo con datos de precipitación de AEMET. Ese cruce
-convertiría el resultado de "el pipeline detecta una anomalía" en "el pipeline
-detecta la sequía que registró la agencia meteorológica", que es
-considerablemente más sólido.
+| Semana | Fechas | Anomalía en sigmas | Cuenca afectada |
+|---|---|---|---|
+| 16 | mediados de abril | -1,35 | 89% |
+| 17 | finales de abril | -1,57 | 92% |
+| **18** | **principios de mayo** | **-1,73** | **95%** |
+| 19 | mediados de mayo | -1,49 | 87% |
+| 22 | finales de mayo | -1,44 | 96% |
 
-[7.1 Logros, 7.4 Limitaciones]
+El pico cae en la primera semana de mayo, que es cuando el cereal de secano
+llena el grano. Si le falta agua en esa ventana la espiga no cuaja y la planta
+seca antes de tiempo, y el NDVI lo retrata porque mide cuánta hoja verde queda
+en pie.
+
+### 7.3 2022 sí aparece, pero en otra estación
+
+Esta es la corrección a la primera lectura de estos datos, que daba 2022 por
+año sin señal. Anomalía media en sigmas por año y estación:
+
+| Año | Primavera | Verano | Otoño | Invierno |
+|---|---|---|---|---|
+| 2019 | -0,57 | -0,70 | -0,19 | -0,18 |
+| 2021 | -0,56 | -0,30 | +0,04 | +0,19 |
+| 2022 | +0,12 | -0,31 | **-0,46** | **-0,67** |
+| 2023 | **-1,37** | -0,74 | -0,11 | -0,04 |
+| 2024 | +0,33 | -0,07 | +0,92 | +0,27 |
+
+El otoño y el invierno de 2022 son los peores de la serie. La primavera de 2023
+es la peor de la serie. Y en otoño de 2023 la cuenca ya está en -0,11, es decir,
+recuperada.
+
+Leídos juntos, los dos años cuentan un mecanismo en vez de señalar una rareza:
+fallan las lluvias de otoño e invierno de 2022, la vegetación lo aguanta porque
+en invierno consume poco, y el daño estalla en la primavera siguiente, cuando el
+cultivo pide el agua que no está. La sequía se declara cuando deja de llover; el
+NDVI mide la planta, así que retrata el segundo momento, no el primero.
+
+### 7.4 Dónde dolió más
+
+Los diez municipios con peor anomalía en la primavera de 2023 forman un grupo
+geográfico, no una lista dispersa. Añora, Villanueva de Córdoba, Pozoblanco,
+Peñarroya-Pueblonuevo y La Granjuela son de Los Pedroches y el norte de Córdoba;
+Hinojosas de Calatrava y Llerena caen al otro lado de Sierra Morena. Todo dehesa
+y cereal de secano, sin una gota de riego. Añora, el peor, pasó de una normal de
+0,552 a un observado de 0,320.
+
+Por provincias, ordenadas de más a menos castigo en sigmas: Badajoz -1,68,
+Huelva -1,64, Sevilla -1,49, Córdoba -1,49, Ciudad Real -1,47, Granada -1,25,
+Jaén -1,02.
+
+Que Jaén sea el que menos sufre encaja con la agronomía: es olivar, y el olivo
+tiene raíz profunda y aguanta una campaña seca mucho mejor que un cereal anual.
+La lectura de secano contra regadío que faltaba en la versión anterior de este
+apartado aparece aquí por la vía del cultivo dominante de cada provincia.
+
+Cautela sobre esos números: Badajoz aporta 11 municipios y Ciudad Real 18, que
+son bordes de la cuenca y muestras pequeñas. Sevilla (103), Granada (121), Jaén
+(89) y Córdoba (63) sostienen mucho mejor la comparación.
+
+### 7.5 Tres cautelas y una pregunta abierta
+
+**La cobertura es comparable entre años**, y conviene decirlo porque es la
+objeción evidente. Entre 1,3 y 1,6 observaciones por semana y municipio, y entre
+el 92% y el 95% de píxeles útiles, en los nueve años. La anomalía de 2023 no
+sale de tener menos imágenes ese año.
+
+**La normal se calcula con los mismos ocho años, 2023 incluido.** Eso significa
+que 2023 aporta una octava parte a la referencia contra la que se compara, lo
+cual reduce su anomalía en lugar de inflarla. El efecto real es algo mayor que
+el de las tablas.
+
+**2026 llega solo hasta el 23 de agosto**, así que su otoño está vacío y su
+media anual no es comparable con la de un año cerrado.
+
+Y una pregunta que este trabajo no cierra: 2024, 2025 y 2026 salen los tres por
+encima, con inviernos que suben de +0,27 a +0,44 y a +0,64. Puede ser
+recuperación real tras la sequía o puede ser un efecto del sensor o del
+reprocesado del archivo. Tres años sobre una serie de nueve no bastan para
+llamarlo tendencia, y afirmarlo sin contrastar sería justo el tipo de conclusión
+que el resto del trabajo se ha cuidado de no sacar.
+
+Queda pendiente el cruce con datos de precipitación de AEMET. Ese contraste
+convertiría "el pipeline detecta una anomalía" en "el pipeline detecta la
+sequía que registró la agencia meteorológica", que es bastante más sólido, y
+permitiría además fechar el desfase entre la lluvia que falta y la hoja que se
+seca.
+
+[7.1 Logros, 7.2 Métricas, 7.4 Limitaciones]
 
 ## Apéndice: cierre de la carga
 

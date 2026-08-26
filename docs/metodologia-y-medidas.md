@@ -304,3 +304,22 @@ detecta la sequía que registró la agencia meteorológica", que es
 considerablemente más sólido.
 
 [7.1 Logros, 7.4 Limitaciones]
+
+## Apéndice: cierre de la carga
+
+Generado automáticamente al terminar la carga histórica, el
+26 de August de 2026 a las 02:29.
+
+```
+2026-08-26 02:29:12,428 INFO ndvi_guadalquivir.pipeline: Carga terminada. 1860 fechas en el intervalo, 8 ya cargadas, 1852 procesadas (1292 con dato, 546 sin dato util, 14 con error). 184872 filas escritas en 905.3 min, 114.8 s por fecha.
+```
+
+Fechas marcadas con error: 14.
+Escenas ilegibles por la trampa del apartado 4.2:
+42.
+
+Fechas a recuperar:
+
+```
+2018-06-14 2018-08-13 2018-09-22 2018-11-30 2018-12-05 2019-03-26 2019-09-12 2019-10-07 2019-11-26 2019-12-06 2019-12-16 2019-12-26 2020-01-15 2020-03-05 2020-03-15 2020-04-04 2020-04-14 2020-07-03 2020-07-23 2020-08-02 2020-12-15 2021-04-19 2021-06-10 2021-09-06 2021-09-11 2021-12-15 2022-05-04 2022-05-09 2022-08-22 2022-09-01 2023-01-29 2023-02-18 2023-06-25 2023-10-06 2023-12-05 2024-01-23 2024-02-03 2024-03-04 2024-08-01 2025-01-18 
+```

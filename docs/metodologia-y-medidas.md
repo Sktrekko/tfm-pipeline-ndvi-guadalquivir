@@ -262,6 +262,73 @@ operación de mantenimiento.
 
 [6.6 Almacenamiento, 5.4 Costes]
 
+## 5-bis. La orquestación: qué corre solo y cuándo
+
+La carga histórica es una operación de un solo uso. Lo que mantiene la serie
+viva después es otra cosa, y ahí es donde entra Airflow 3.
+
+Son dos DAG con una división deliberada. `ndvi_ingest` se despierta cada
+madrugada, pregunta al catálogo qué días hay en los últimos veinte, descarta
+contra el registro de ingesta los que ya están resueltos y procesa el resto.
+`ndvi_transform` no tiene hora: se programa sobre el asset que produce la
+ingesta, así que dbt corre cuando entra dato nuevo y no corre cuando no entra.
+
+### Por qué una tarea por fecha y no un bucle
+
+Las fechas son independientes entre sí. Con un bucle dentro de una sola tarea,
+un corte de red en el día 12 obliga a repetir también el 10 y el 11, que ya
+habían salido bien. Airflow genera las tareas en el momento de ejecutar, una
+por fecha pendiente, y reintenta solo la que falló. De paso, la rejilla de la
+ejecución pasa a leerse como el calendario del satélite, con el día de la
+adquisición por nombre en lugar de un índice.
+
+### Por qué el disparo va por dato y no por reloj
+
+Un cron para dbt obliga a elegir una hora y aceptar sus dos fallos, que son
+simétricos: si corre antes de que termine la ingesta transforma dato viejo, y
+si corre después gasta el trabajo de recalcular nueve años de climatología en
+días en los que no ha entrado ni una fila. Sobre esta cuenca el satélite pasa
+cada cinco días, de modo que la mayoría de las madrugadas no hay nada que
+recalcular. La tarea que publica el asset se marca como saltada si la ejecución
+no escribió filas, y una tarea saltada no emite el evento.
+
+Esta es la razón concreta por la que el proyecto usa Airflow 3 y no la 2: la
+programación por assets es la novedad de la 3 que resuelve exactamente este
+problema.
+
+### Números medidos, 27 de agosto de 2026
+
+Contra el almacén real, no contra datos de prueba:
+
+| Paso | Tiempo |
+|---|---|
+| Consulta acotada a la ventana de 20 días | **12 s** (17 fechas, 16 ya resueltas) |
+| Proceso de una fecha (14 escenas, 336 filas) | **43,4 s** |
+| `ndvi_ingest` completo | **61,8 s** |
+| `ndvi_transform` completo: 6 modelos y sus 31 comprobaciones | **7,4 s** |
+
+La cadena entre los dos DAG se comprobó con el planificador en marcha, no
+leyendo la base de metadatos: la ingesta programada terminó a las 07:06:13 y
+`ndvi_transform` arrancó a las 07:06:14 con tipo de ejecución
+`asset_triggered`.
+
+La misma prueba sirvió de comprobación de reproducibilidad. Para forzar que
+hubiera trabajo pendiente se borró el 25 de agosto de 2026, filas y entrada del
+registro, y se dejó que el DAG lo rehiciera por su cuenta. Volvieron las mismas
+**336 filas** con la misma media de NDVI (**0,3009**), y la capa gold regresó a
+sus 128.831 filas y sus 553 municipios-semana por debajo de dos desviaciones
+típicas. El reproceso de una fecha es determinista hasta la cifra.
+
+### Un detalle de despliegue que ahorró trabajo
+
+Airflow 3.3.1 resuelve sus dependencias sin un solo conflicto contra pandas
+3.0.5, rasterio y geopandas, que son las del cálculo. Eso permite instalarlo en
+el mismo entorno virtual, en un grupo aparte que no se sincroniza por defecto, y
+evita tener que mantener una imagen de Docker propia con GDAL dentro. Era el
+riesgo esperado de este bloque y no se materializó.
+
+[5.3 Tecnologías, 7.2 Métricas]
+
 ## 6. Verificación de que el dato es correcto
 
 Además de las validaciones automáticas (contratos de esquema antes de escribir

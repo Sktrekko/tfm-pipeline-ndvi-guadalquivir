@@ -60,13 +60,41 @@ comparables píxel a píxel y las variaciones observadas son del terreno.
 temporales por zona administrativa, que es el dato que consume un analista y lo
 que hace manejable el volumen.
 
+## Orquestación
+
+Dos DAG de **Airflow 3** en `dags/`, y la relación entre ambos es la parte
+interesante:
+
+```
+ndvi_ingest  (cada día a las 5:00)          ndvi_transform  (sin calendario)
+  pending_dates                                dbt_build
+       │                                          │
+  ingest_date × una tarea por fecha           summarize
+       │                                          │
+  publish ──────► [ ndvi_zonal_daily ] ──────► [ ndvi_anomaly ]
+                     asset de bronze              asset de gold
+```
+
+`ndvi_transform` no tiene hora. Se programa **sobre el asset** que produce la
+ingesta, de modo que dbt corre cuando entra dato nuevo y no corre cuando no
+entra. Sobre esta cuenca el satélite pasa cada cinco días, así que la mayoría de
+las madrugadas no hay nada que recalcular.
+
+Cada fecha de adquisición es **una tarea propia**, generada en el momento de
+ejecutar. Si el día 12 falla por un corte de red, Airflow reintenta ese día y no
+los que ya salieron bien.
+
+```bash
+./scripts/run_airflow.sh       # interfaz en http://localhost:8080
+```
+
 ## Puesta en marcha
 
 ```bash
 uv sync                        # crea el entorno con Python 3.12
-uv run pytest                  # 95 tests, sin red
+uv run pytest                  # 216 tests, sin red
 uv run pytest -m integration   # contrato con el catálogo remoto
-uv run ruff check src tests    # análisis estático
+uv run ruff check .            # análisis estático
 ```
 
 ## Estado
@@ -74,14 +102,14 @@ uv run ruff check src tests    # análisis estático
 - [x] Descubrimiento STAC, lectura por ventana, NDVI con máscara de calidad
 - [x] Mosaico diario y estadística zonal
 - [x] Contratos de datos con Pandera y suite de tests
-- [ ] Almacenamiento Iceberg sobre MinIO
-- [ ] Modelado con dbt sobre DuckDB
-- [ ] Orquestación con Airflow 3
+- [x] Almacenamiento Iceberg sobre MinIO, con carga histórica 2018-2026
+- [x] Modelado con dbt sobre DuckDB: climatología y anomalía semanal
+- [x] Orquestación con Airflow 3, con programación por assets
 - [ ] Panel Streamlit + Folium
 - [ ] Empaquetado Docker Compose y CI en GitHub Actions
 
 ## Fuente de datos
 
-Productos **Sentinel-2 L2A Collection-1** del programa Copernicus, servidos como
+Productos **Sentinel-2 L2A** del programa Copernicus, servidos como
 COG a través del catálogo STAC de Element84 sobre AWS Open Data. Datos públicos y
 gratuitos bajo licencia abierta de Copernicus.

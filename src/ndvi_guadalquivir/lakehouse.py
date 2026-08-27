@@ -44,7 +44,7 @@ from pyiceberg.exceptions import NoSuchTableError
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.schema import Schema
 from pyiceberg.table import Table
-from pyiceberg.transforms import MonthTransform
+from pyiceberg.transforms import MonthTransform, YearTransform
 from pyiceberg.types import (
     DateType,
     DoubleType,
@@ -68,6 +68,14 @@ LOG_TABLE = "ingestion_log"
 
 #: Tabla de dimension: los municipios y sus atributos.
 ZONES_TABLE = "zones"
+
+#: Precipitacion y temperatura diarias de las estaciones de AEMET dentro de la
+#: cuenca. Es la segunda fuente del proyecto y vive en la misma capa bronze que
+#: el NDVI, sin mezclarse con el: son observaciones de cosas distintas, medidas
+#: por instrumentos distintos y con grano espacial distinto (114 puntos frente a
+#: 445 poligonos). Cruzarlas es trabajo de la capa gold, en SQL, donde la
+#: decision de como se cruzan queda a la vista y se puede discutir.
+WEATHER_TABLE = "weather_station_daily"
 
 #: Marca de tiempo de la carga. No viene del satelite sino del proceso, y sirve
 #: para saber que ejecucion escribio cada fila cuando algo no cuadre.
@@ -317,6 +325,107 @@ def replace_dates(
             transaction.append(to_arrow(DailyZonalNdviSchema.validate(frame), table))
 
     logger.info("Reemplazadas %d fechas (%d filas)", len(dates), len(frame))
+    return len(frame)
+
+
+# ---------------------------------------------------------------------------
+# Meteorologia
+# ---------------------------------------------------------------------------
+
+
+def weather_schema() -> Schema:
+    """Esquema de la tabla diaria de estaciones meteorologicas.
+
+    Las medidas van como opcionales y el resto como obligatorias, y esa
+    distincion no es un descuido sino el contrato. Una estacion puede tener el
+    pluviometro averiado una semana y el termometro bien, o al reves. Forzar un
+    valor donde no lo hubo obligaria a inventarse un cero, que en una serie
+    sobre sequia es exactamente la mentira que mas dano hace: un cero de lluvia
+    y un "no se midio" cuentan historias opuestas y no se pueden confundir.
+
+    La estacion y el dia forman la clave: una estacion no mide dos veces el
+    mismo dia.
+    """
+    return Schema(
+        NestedField(1, "station_id", StringType(), required=True),
+        NestedField(2, "observed_on", DateType(), required=True),
+        NestedField(3, "precipitation_mm", DoubleType(), required=False),
+        NestedField(4, "temp_mean_c", DoubleType(), required=False),
+        NestedField(5, "temp_max_c", DoubleType(), required=False),
+        NestedField(6, "temp_min_c", DoubleType(), required=False),
+        NestedField(7, "station_name", StringType(), required=True),
+        NestedField(8, "province", StringType(), required=True),
+        NestedField(9, "longitude", DoubleType(), required=True),
+        NestedField(10, "latitude", DoubleType(), required=True),
+        NestedField(11, "altitude_m", DoubleType(), required=False),
+        NestedField(12, INGESTED_AT, TimestamptzType(), required=True),
+        identifier_field_ids=[1, 2],
+    )
+
+
+def weather_partition_spec() -> PartitionSpec:
+    """Particionado por ano de observacion, no por mes.
+
+    Aqui el grano correcto es mas grueso que en la tabla de NDVI, y por una
+    razon de tamano. Son 114 estaciones por unos 3.100 dias, del orden de
+    350.000 filas en total: repartidas por mes darian particiones de tres mil
+    filas, que es el tamano al que empiezan a estorbar mas de lo que ayudan.
+    Por ano salen nueve particiones de unas cuarenta mil, que es razonable.
+    """
+    return PartitionSpec(
+        PartitionField(
+            source_id=2, field_id=1000, transform=YearTransform(),
+            name="observed_year",
+        )
+    )
+
+
+def ensure_weather_table(
+    catalog: Catalog | None = None,
+    *,
+    settings: Settings | None = None,
+) -> Table:
+    """Devuelve la tabla de meteorologia, creandola la primera vez."""
+    settings = settings or get_settings()
+    catalog = catalog or get_catalog(settings)
+    namespace = settings.lakehouse.bronze_namespace
+    identifier = f"{namespace}.{WEATHER_TABLE}"
+
+    catalog.create_namespace_if_not_exists(namespace)
+    try:
+        return catalog.load_table(identifier)
+    except NoSuchTableError:
+        logger.info("Creando la tabla %s", identifier)
+        return catalog.create_table(
+            identifier,
+            schema=weather_schema(),
+            partition_spec=weather_partition_spec(),
+            properties={
+                "write.parquet.compression-codec": "zstd",
+                "comment": (
+                    "Precipitacion y temperatura diarias de las estaciones de "
+                    "AEMET dentro de la cuenca del Guadalquivir"
+                ),
+            },
+        )
+
+
+def append_weather(frame: pd.DataFrame, *, table: Table | None = None) -> int:
+    """Anade filas de meteorologia a la tabla."""
+    if frame.empty:
+        logger.info("Lote de meteorologia vacio: no se escribe nada")
+        return 0
+
+    table = table or ensure_weather_table()
+    frame = frame.copy()
+    frame[INGESTED_AT] = pd.Timestamp.now(tz="UTC")
+
+    arrow_schema = table.schema().as_arrow()
+    table.append(pa.Table.from_arrays(
+        [pa.array(frame[field.name], type=field.type) for field in arrow_schema],
+        schema=arrow_schema,
+    ))
+    logger.info("Escritas %d filas de meteorologia en %s", len(frame), table.name())
     return len(frame)
 
 

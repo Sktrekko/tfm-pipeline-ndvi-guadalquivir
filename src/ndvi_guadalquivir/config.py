@@ -16,6 +16,38 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
+#: Fichero de variables locales, no versionado. Docker Compose lo lee solo; el
+#: codigo de Python no, y hasta ahora no hacia falta porque todos los ajustes
+#: tenian un valor por defecto razonable. La clave de AEMET no puede tenerlo,
+#: porque es una credencial, asi que se carga desde aqui.
+ENV_FILE = PROJECT_ROOT / ".env"
+
+
+def load_env_file(path: Path | None = None) -> None:
+    """Lleva a `os.environ` lo que haya en `.env`, sin pisar lo ya definido.
+
+    Se escribe a mano en lugar de traer `python-dotenv` porque son quince lineas
+    y una dependencia menos que justificar en la memoria.
+
+    El orden de precedencia importa y es el habitual: lo que ya esta en el
+    entorno gana. Asi, una ejecucion en Airflow o en integracion continua puede
+    apuntar a otra infraestructura exportando la variable, sin que el fichero de
+    desarrollo del portatil se imponga por detras.
+    """
+    path = path or ENV_FILE
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        os.environ.setdefault(name.strip(), value.strip())
+
+
+load_env_file()
+
+
 def _env(name: str, default: str) -> str:
     return os.environ.get(name, default)
 
@@ -51,6 +83,35 @@ class StacSettings:
         "STAC_COLLECTION", "sentinel-2-l2a"))
     max_cloud_cover: float = field(default_factory=lambda: float(_env(
         "STAC_MAX_CLOUD_COVER", "20")))
+
+
+@dataclass(frozen=True)
+class AemetSettings:
+    """Acceso al servicio de datos abiertos de AEMET.
+
+    Sirve para contrastar la anomalia de vegetacion con la lluvia que de verdad
+    falto. Sin ese contraste el proyecto solo puede afirmar que detecta una
+    anomalia; con el puede afirmar que detecta la sequia que registro la agencia
+    meteorologica del Estado, que es una conclusion de otro orden.
+
+    Se eligio AEMET y no un reanalisis como ERA5 precisamente por eso. ERA5 es
+    una rejilla y evitaria tener que interpolar desde estaciones sueltas, pero
+    es un modelo que reconstruye el pasado, no una observacion. El argumento que
+    sostiene la memoria necesita la fuente oficial.
+
+    La clave se pide gratis en el portal de AEMET y llega por correo. No tiene
+    valor por defecto a proposito: es una credencial y debe salir del entorno,
+    nunca del codigo.
+    """
+
+    api_url: str = field(default_factory=lambda: _env(
+        "AEMET_API_URL", "https://opendata.aemet.es/opendata"))
+    api_key: str = field(default_factory=lambda: _env("AEMET_API_KEY", ""))
+
+    @property
+    def configured(self) -> bool:
+        """Si hay clave. Permite que el resto del proyecto siga funcionando sin ella."""
+        return bool(self.api_key)
 
 
 @dataclass(frozen=True)
@@ -118,6 +179,7 @@ class LakehouseSettings:
 @dataclass(frozen=True)
 class Settings:
     stac: StacSettings = field(default_factory=StacSettings)
+    aemet: AemetSettings = field(default_factory=AemetSettings)
     store: ObjectStoreSettings = field(default_factory=ObjectStoreSettings)
     processing: ProcessingSettings = field(default_factory=ProcessingSettings)
     lakehouse: LakehouseSettings = field(default_factory=LakehouseSettings)

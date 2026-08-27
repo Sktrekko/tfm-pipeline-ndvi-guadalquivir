@@ -37,6 +37,7 @@ STAC API ──► catalog.py ──► raster.py ──► mosaic.py ──► 
 | `zonal.py`   | Agrega el ráster a polígonos: una fila por zona y fecha. |
 | `schemas.py` | Contratos de datos validados con Pandera. |
 | `aoi.py`     | Zonas de estudio y recorte a la cuenca. |
+| `weather.py` | Precipitación y temperatura diarias de AEMET, la segunda fuente. |
 | `config.py`  | Configuración por variables de entorno. |
 
 ## Decisiones de diseño relevantes
@@ -108,8 +109,17 @@ uv run ruff check .            # análisis estático
 - [ ] Panel Streamlit + Folium
 - [ ] Empaquetado Docker Compose y CI en GitHub Actions
 
-## Fuente de datos
+## Fuentes de datos
 
-Productos **Sentinel-2 L2A** del programa Copernicus, servidos como
+**Imágenes.** Productos **Sentinel-2 L2A** del programa Copernicus, servidos como
 COG a través del catálogo STAC de Element84 sobre AWS Open Data. Datos públicos y
 gratuitos bajo licencia abierta de Copernicus.
+
+**Meteorología.** Precipitación y temperatura diarias de las **114 estaciones de
+AEMET** que caen dentro de la cuenca, vía AEMET OpenData. Sirven para contrastar
+la anomalía de vegetación con la lluvia que de verdad faltó, que es lo que
+convierte una anomalía en un mecanismo. Requiere una clave gratuita en
+`AEMET_API_KEY`; sin ella el resto del pipeline funciona igual.
+
+**Geometrías.** Cuenca de HydroBASINS y límites municipales del Instituto
+Geográfico Nacional.

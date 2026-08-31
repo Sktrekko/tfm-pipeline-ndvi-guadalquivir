@@ -762,6 +762,119 @@ consulta traiga las columnas que la pantalla va a pintar, que la geometría
 simplificada conserve el área, y que un municipio sin provincia asignada siga
 apareciendo en el selector en lugar de desaparecer sin que nadie lo note.
 
+## 10. Integración continua y entregable
+
+El proyecto funcionaba en un portatil. Esa frase es el problema, no el logro: en
+local todo va porque el entorno se fue construyendo poco a poco durante cuatro
+meses y ya nadie recuerda qué hizo falta. **Un servidor limpio es el único sitio
+donde "se instala y funciona" significa algo**, y para eso existe este bloque.
+
+### 10.1 Cuatro trabajos, y por qué separados
+
+| Trabajo | Qué pregunta responde | Tiempo medido |
+|---|---|---|
+| Estilo, tipos y tests | ¿El código sigue siendo correcto? | 52 s |
+| dbt compila | ¿El grafo de transformaciones se sostiene? | 23 s |
+| El paquete se construye e instala | ¿Alguien más puede usar esto? | 15 s |
+| Contrato con el catálogo STAC | ¿El proveedor sigue respondiendo lo mismo? | 31 s |
+
+Corren en paralelo, así que la respuesta completa llega en menos de un minuto.
+Están separados a propósito: con un único trabajo, un fallo enciende un semáforo
+rojo que no dice nada, y hay que abrir el registro para saber si se rompió el
+código, dbt o un servicio de terceros.
+
+Tres decisiones dentro merecen justificarse.
+
+**dbt hace `parse`, no `build`.** `parse` construye el grafo de dependencias sin
+tocar el almacén, y con eso caza lo que de verdad se puede romper editando SQL:
+un `ref()` a un modelo que no existe, un ciclo entre modelos, un YAML mal
+escrito. Ejecutar los modelos de verdad exigiría levantar MinIO, Iceberg y ocho
+años de carga histórica dentro de la integración continua, que ni cabe en el
+tiempo ni tendría sentido.
+
+**Los tests de integración van aparte y no bloquean.** De los 252 tests, 251 no
+tocan la red y uno sí: el que comprueba que el catálogo de Element84 sigue
+devolviendo escenas con la forma que espera el pipeline. Ese test es valioso,
+porque avisaría de un cambio en el proveedor antes de que rompiera una carga,
+pero su resultado depende de que un servicio ajeno esté en pie. Hacerlo
+obligatorio sería dejar que una caída de terceros bloquee el trabajo propio. Va
+en su propio trabajo, marcado como no bloqueante, y solo en la rama principal o
+lanzado a mano.
+
+**Se usa `ruff check` pero no `ruff format`.** El formateador reescribiría 31 de
+los 37 ficheros del proyecto. Adoptar un formateador es una decisión razonable,
+pero se toma al empezar un proyecto, no a dos semanas de entregarlo: el diff no
+aportaría nada y habría que revisarlo entero.
+
+### 10.2 mypy: de 27 errores a cero, y qué había debajo
+
+La comprobación de tipos estaba configurada desde el principio y nunca se había
+ejecutado en serio. Al meterla en la integración continua salieron 27 errores, y
+el reparto es lo interesante.
+
+**Uno era real.** En `headline_numbers`, el resultado de `fetchone()` se
+desempaquetaba a ciegas, y ese método devuelve `None` cuando no hay filas. Con el
+almacén cargado no pasa nunca; con uno recién creado, el panel reventaría al
+abrirlo. La distinción que obligó a escribir el arreglo bien es que las dos
+consultas de esa función no corren el mismo riesgo: la primera es una agregación
+y siempre devuelve una fila, mientras que la segunda lleva un `LIMIT` y puede no
+devolver ninguna.
+
+De paso apareció algo que ninguna herramienta señala: esa función calculaba la
+observación más extrema de toda la serie y **nadie la usaba**. Ahora sale escrita
+en la cabecera del panel.
+
+**Los otros 26 eran fricción con los tipos que publican las librerías**, no
+errores del proyecto: catorce de PyIceberg, que declara `EqualTo` con una firma
+que mypy lee mal; cinco de Pandera, cuyas comprobaciones reciben `cls` sin llevar
+`@classmethod` porque es la librería quien las convierte; y tres de xarray y
+rioxarray, donde falta un método en los stubs o el tipo de retorno es una unión.
+
+Se marcan con `type: ignore` **acotado a la línea y al código de error concreto**,
+con el motivo escrito al lado. La alternativa fácil era relajar la comprobación
+del módulo entero, y eso taparía también los errores propios que aparezcan
+mañana, que son justo los que interesa cazar. Uno de los tres se arregló sin
+ignorar nada: `open_rasterio` puede devolver tres tipos distintos y ahora se
+comprueba cuál llegó, de modo que un fichero inesperado da un error que dice lo
+que pasa en vez de un fallo de atributo tres llamadas más abajo.
+
+### 10.3 Un fallo que solo aparece al ejecutarlo de verdad
+
+La primera ejecución real de la integración continua salió en rojo, y el motivo
+no estaba en el código: **la cuota de almacenamiento de artefactos de la cuenta
+estaba agotada**. El paquete se construía e instalaba sin problema; lo que
+fallaba era el paso que lo subía como fichero descargable.
+
+Se quitó ese paso en lugar de buscarle la vuelta. El wheel pesa 60 KB y sale de
+un solo comando, así que guardarlo treinta días en un servidor ajeno no aporta
+nada frente a volver a construirlo. Lo que sí importa, que es saber que se puede
+instalar limpio, lo comprueba el paso anterior.
+
+Merece quedar escrito porque es un caso general: **un fichero de configuración
+que parece correcto no lo está hasta que se ejecuta**. Lo mismo pasó con
+`.gitignore` en este mismo bloque, donde escribir `build/  # comentario` no
+ignora nada, porque los comentarios al final de un patrón no existen en ese
+formato. La línea entera pasa a ser un patrón que no casa con nada, y no avisa:
+el entregable se coló en un commit y hubo que sacarlo.
+
+### 10.4 El entregable
+
+La guía del máster pide un único fichero llamado
+`Dario_Rodriguez_Gonzalez_TFM.zip`. Montarlo a mano el día de la entrega es una
+forma excelente de olvidarse de algo a las once de la noche, así que lo arma
+`scripts/build_deliverable.py`.
+
+La decisión de diseño está en cómo se recoge el código: con **`git archive` y no
+copiando la carpeta**. Copiar la carpeta se llevaría los 200 MB de `data/`, el
+entorno virtual, las cachés y el fichero `.env` con la clave de AEMET dentro.
+`git archive` exporta exactamente lo que git conoce, que es justamente lo que se
+quiere entregar. El zip resultante son **65 ficheros y 0,6 MB**.
+
+El script tampoco finge estar completo cuando no lo está. Busca la memoria y el
+enlace del vídeo, y si no los encuentra los nombra en la salida en vez de armar
+un entregable con huecos en silencio. Es la misma idea que gobierna el resto del
+proyecto: un fallo que avisa vale mucho más que uno que no se nota.
+
 ## Apéndice: cierre de la carga
 
 Generado automáticamente al terminar la carga histórica, el

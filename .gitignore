@@ -4,7 +4,10 @@ __pycache__/
 .venv/
 *.egg-info/
 dist/
-build/          # entregable armado por scripts/build_deliverable.py
+# Entregable armado por scripts/build_deliverable.py. El comentario va en su
+# propia linea: gitignore no admite comentarios al final de un patron, y
+# ponerlo ahi convierte la linea entera en un patron que no casa con nada.
+build/
 
 # Herramientas
 .pytest_cache/

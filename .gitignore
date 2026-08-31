@@ -4,7 +4,7 @@ __pycache__/
 .venv/
 *.egg-info/
 dist/
-build/
+build/          # entregable armado por scripts/build_deliverable.py
 
 # Herramientas
 .pytest_cache/

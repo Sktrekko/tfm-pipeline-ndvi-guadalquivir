@@ -144,11 +144,20 @@ col2.metric("Municipios", cifras["municipios"])
 col3.metric("Desde", str(cifras["desde"]))
 col4.metric("Hasta", str(cifras["hasta"]))
 
-st.caption(
+pie = (
     "NDVI semanal por municipio a partir de Sentinel-2, comparado con la normal "
     "de ese mismo municipio en esa misma semana del ano. Los datos salen de la "
     "capa gold que construye dbt."
 )
+peor = cifras["peor_semana"]
+if peor:
+    municipio, anio_peor, semana_peor, sigmas = peor
+    pie += (
+        f" La observacion mas extrema de toda la serie es {municipio}, "
+        f"semana {semana_peor} de {anio_peor}, a {abs(sigmas):.1f} desviaciones "
+        "tipicas por debajo de su normal."
+    )
+st.caption(pie)
 
 mapa_tab, serie_tab, cruce_tab = st.tabs(
     ["Mapa de anomalia", "Serie por municipio", "Cruce con la lluvia"]

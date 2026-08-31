@@ -309,16 +309,26 @@ def basin_monthly(connection: duckdb.DuckDBPyConnection) -> pd.DataFrame:
 
 
 def headline_numbers(connection: duckdb.DuckDBPyConnection) -> dict[str, object]:
-    """Las cuatro cifras que resumen el almacen, para la cabecera del panel.
+    """Las cifras que resumen el almacen, para la cabecera del panel.
 
     Existen para que quien abra el panel sepa en un segundo sobre cuanto dato
     esta mirando. Un mapa bonito sin saber si detras hay una semana o nueve anos
     no dice nada.
+
+    Las dos consultas se protegen contra la tabla vacia. Es un caso que no pasa
+    con el almacen cargado, pero si con uno recien creado, y la diferencia entre
+    los dos casos importa: la primera consulta es una agregacion y siempre
+    devuelve una fila (con ceros y nulos dentro), mientras que la segunda lleva
+    un LIMIT y puede no devolver ninguna. Sin la guarda, la primera reventaria
+    al desempaquetar `None` y la segunda dejaria un `None` viajando hasta la
+    pantalla.
     """
-    filas, municipios, desde, hasta = connection.execute(f"""
+    resumen = connection.execute(f"""
         SELECT count(*), count(DISTINCT zone_id), min(primera_fecha), max(ultima_fecha)
         FROM {GOLD}.ndvi_anomaly
     """).fetchone()
+    filas, municipios, desde, hasta = resumen if resumen else (0, 0, None, None)
+
     peor = connection.execute(f"""
         SELECT zone_name, anio, semana, anomalia_sigmas
         FROM {GOLD}.ndvi_anomaly

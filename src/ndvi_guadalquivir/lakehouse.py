@@ -308,16 +308,21 @@ def replace_dates(
     Returns:
         Numero de filas escritas.
     """
-    from pyiceberg.expressions import EqualTo, Or
+    from pyiceberg.expressions import BooleanExpression, EqualTo, Or
 
     dates = list(dates)
     if not dates:
         return 0
 
     table = table or ensure_daily_table()
-    condition = EqualTo("acquisition_date", dates[0])
+    # Los `type: ignore` no tapan un fallo del proyecto: PyIceberg declara
+    # `EqualTo` con una firma que mypy lee mal (cree que el segundo argumento es
+    # el nombre del operador, no el valor). En ejecucion es correcto y esta
+    # cubierto por los tests. Se marcan aqui, acotados a la linea, en vez de
+    # relajar la comprobacion de tipos del modulo entero.
+    condition: BooleanExpression = EqualTo("acquisition_date", dates[0])  # type: ignore[arg-type,call-arg]
     for day in dates[1:]:
-        condition = Or(condition, EqualTo("acquisition_date", day))
+        condition = Or(condition, EqualTo("acquisition_date", day))  # type: ignore[arg-type,call-arg]
 
     with table.transaction() as transaction:
         transaction.delete(delete_filter=condition)
@@ -688,16 +693,21 @@ def replace_log_entries(
     Returns:
         Numero de entradas escritas.
     """
-    from pyiceberg.expressions import EqualTo, Or
+    from pyiceberg.expressions import BooleanExpression, EqualTo, Or
 
     dates = list(dates)
     if not dates:
         return 0
 
     table = table or ensure_log_table()
-    condition = EqualTo("acquisition_date", dates[0])
+    # Los `type: ignore` no tapan un fallo del proyecto: PyIceberg declara
+    # `EqualTo` con una firma que mypy lee mal (cree que el segundo argumento es
+    # el nombre del operador, no el valor). En ejecucion es correcto y esta
+    # cubierto por los tests. Se marcan aqui, acotados a la linea, en vez de
+    # relajar la comprobacion de tipos del modulo entero.
+    condition: BooleanExpression = EqualTo("acquisition_date", dates[0])  # type: ignore[arg-type,call-arg]
     for day in dates[1:]:
-        condition = Or(condition, EqualTo("acquisition_date", day))
+        condition = Or(condition, EqualTo("acquisition_date", day))  # type: ignore[arg-type,call-arg]
 
     frame = pd.DataFrame.from_records(list(records))
     frame[INGESTED_AT] = pd.Timestamp.now(tz="UTC")

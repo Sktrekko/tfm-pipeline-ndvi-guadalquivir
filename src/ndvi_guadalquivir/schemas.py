@@ -46,18 +46,23 @@ class _NdviStatsSchema(pa.DataFrameModel):
         strict = False       # se toleran columnas extra de trazabilidad
         coerce = True
 
+    # Las comprobaciones de DataFrame reciben `cls` sin llevar `@classmethod`
+    # encima: es Pandera quien las convierte al construir la clase. mypy no lo
+    # sabe y las lee como metodos de instancia mal escritos, de ahi el
+    # `type: ignore` que llevan todas. Ponerles un `@classmethod` a mano
+    # romperia el orden de decoradores que espera Pandera.
     @pa.dataframe_check
-    def percentiles_ordered(cls, df) -> Series[bool]:
+    def percentiles_ordered(cls, df) -> Series[bool]:  # type: ignore[misc]
         """El percentil 10 nunca puede superar al 90."""
         return df["ndvi_p10"] <= df["ndvi_p90"]
 
     @pa.dataframe_check
-    def median_within_percentiles(cls, df) -> Series[bool]:
+    def median_within_percentiles(cls, df) -> Series[bool]:  # type: ignore[misc]
         """La mediana cae necesariamente entre los percentiles 10 y 90."""
         return (df["ndvi_median"] >= df["ndvi_p10"]) & (df["ndvi_median"] <= df["ndvi_p90"])
 
     @pa.dataframe_check
-    def valid_pixels_not_exceeding_total(cls, df) -> Series[bool]:
+    def valid_pixels_not_exceeding_total(cls, df) -> Series[bool]:  # type: ignore[misc]
         """No puede haber mas pixeles validos que pixeles totales."""
         return df["valid_pixel_count"] <= df["pixel_count"]
 
@@ -79,7 +84,7 @@ class DailyZonalNdviSchema(_NdviStatsSchema):
         coerce = True
 
     @pa.dataframe_check
-    def one_row_per_zone_and_date(cls, df) -> bool:
+    def one_row_per_zone_and_date(cls, df) -> bool:  # type: ignore[misc]
         """La combinacion zona-fecha identifica la fila de forma univoca."""
         return not df.duplicated(subset=["zone_id", "acquisition_date"]).any()
 
@@ -97,6 +102,6 @@ class SceneZonalNdviSchema(_NdviStatsSchema):
         coerce = True
 
     @pa.dataframe_check
-    def one_row_per_zone_and_scene(cls, df) -> bool:
+    def one_row_per_zone_and_scene(cls, df) -> bool:  # type: ignore[misc]
         """La combinacion zona-escena identifica la fila de forma univoca."""
         return not df.duplicated(subset=["zone_id", "scene_id"]).any()

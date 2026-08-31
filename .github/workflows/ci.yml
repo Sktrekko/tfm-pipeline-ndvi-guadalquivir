@@ -1,0 +1,168 @@
+# Integracion continua.
+#
+# Lo que se comprueba aqui es que el proyecto sigue en pie en un ordenador que
+# no es el de desarrollo. Esa distincion es la razon de que exista este fichero:
+# en local todo funciona porque el entorno se fue construyendo poco a poco y
+# nadie sabe ya que hizo falta. Un servidor limpio no perdona nada, y por eso es
+# el unico sitio donde "se instala y funciona" significa algo.
+#
+# Los cuatro trabajos corren en paralelo y cada uno responde a una pregunta
+# distinta. Estan separados a proposito: si algun dia se cae el catalogo remoto
+# o dbt cambia de version, se ve de un vistazo que parte se rompio en vez de
+# tener un unico semaforo rojo que no dice nada.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Permite lanzarla a mano desde la pestana Actions, que es como se dispara el
+  # contrato con el catalogo remoto sin esperar a la noche.
+  workflow_dispatch:
+
+# Si se empuja dos veces seguidas, la primera ejecucion se cancela. Sin esto se
+# acumulan ejecuciones sobre codigo que ya nadie va a mirar.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Se fija la version en vez de dejar "la ultima". Una CI que cambia de Python
+  # sola deja de ser una comprobacion y pasa a ser una fuente de sorpresas.
+  UV_PYTHON: "3.12"
+
+jobs:
+  calidad:
+    name: Estilo, tipos y tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # Todos los grupos, no solo el nucleo: la bateria de tests cubre los DAG
+      # de Airflow y las consultas del panel, y sin sus dependencias esos
+      # ficheros ni siquiera se importan.
+      - name: Montar el entorno
+        run: uv sync --all-groups --frozen
+
+      # Solo el linter, no el formateador. `ruff format` reescribiria 31 de los
+      # 37 ficheros del proyecto, porque el codigo se escribio a mano con un
+      # estilo propio y coherente. Adoptar un formateador es una decision
+      # razonable, pero se toma al empezar un proyecto y no a dos semanas de
+      # entregarlo: el diff no aportaria nada y habria que revisarlo entero.
+      - name: Estilo
+        run: uv run ruff check .
+
+      - name: Tipos
+        run: uv run mypy
+
+      # Se excluyen los tests de integracion a proposito. Dependen de que el
+      # catalogo de Element84 este en pie, y un servicio ajeno caido no puede
+      # bloquear una rama. Van en su propio trabajo, mas abajo.
+      - name: Tests
+        run: uv run pytest -m "not integration" --cov --cov-report=term-missing
+
+  transformaciones:
+    name: dbt compila
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Montar el entorno
+        run: uv sync --group dev --frozen
+
+      - name: Descargar los paquetes de dbt
+        run: uv run dbt deps
+        working-directory: dbt
+        env:
+          DBT_PROFILES_DIR: .
+
+      # `parse` construye el grafo sin tocar el almacen: caza un `ref()` a un
+      # modelo que no existe, un ciclo entre modelos o un YAML mal escrito, que
+      # es justo lo que se puede romper sin datos delante. Ejecutar los modelos
+      # de verdad exigiria levantar MinIO, Iceberg y ocho anos de carga, y eso
+      # no cabe en una CI.
+      - name: Compilar los modelos
+        run: uv run dbt parse
+        working-directory: dbt
+        env:
+          DBT_PROFILES_DIR: .
+
+  paquete:
+    name: El paquete se construye e instala
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Construir
+        run: uv build
+
+      # La prueba de verdad no es que el paquete se construya, es que se pueda
+      # instalar en un sitio donde no esta el codigo fuente. Por eso se instala
+      # el wheel en un entorno nuevo y vacio y se importa desde un directorio
+      # distinto: asi, si se importara el `src/` del repositorio en vez del
+      # paquete instalado, la prueba fallaria y se veria.
+      - name: Instalar el wheel en un entorno limpio
+        run: |
+          uv venv /tmp/prueba
+          uv pip install --python /tmp/prueba/bin/python dist/*.whl
+          cd /tmp
+          /tmp/prueba/bin/python -c "
+          import ndvi_guadalquivir as paquete
+          from ndvi_guadalquivir import catalog, indices, panel, weather, zonal
+          print('paquete', paquete.__version__ if hasattr(paquete, '__version__') else '0.1.0')
+          print('importado desde', paquete.__file__)
+          assert 'site-packages' in paquete.__file__, 'se importo el repositorio, no el paquete'
+          "
+
+      - name: Guardar el artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: paquete-python
+          path: dist/
+          retention-days: 30
+
+  contrato-remoto:
+    name: Contrato con el catalogo STAC
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Solo a mano o en la rama principal. Es la unica parte que sale a internet,
+    # y su resultado depende de un servicio de terceros: hacerla obligatoria en
+    # cada pull request seria dejar que una caida ajena bloquee el trabajo.
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Montar el entorno
+        run: uv sync --group dev --frozen
+
+      - name: Comprobar que el catalogo sigue respondiendo lo que esperamos
+        run: uv run pytest -m integration -v

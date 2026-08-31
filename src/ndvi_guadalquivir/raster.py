@@ -156,6 +156,18 @@ def _open_window(
         )
 
     array = rioxarray.open_rasterio(href, masked=True, overview_level=level)
+
+    # `open_rasterio` puede devolver tres cosas segun lo que haya dentro del
+    # fichero, y de las tres solo una sirve aqui. Las bandas de Sentinel-2 vienen
+    # en COG de una sola banda, asi que siempre llega un DataArray. Comprobarlo
+    # cuesta una linea y convierte un fichero inesperado en un error que dice lo
+    # que pasa, en vez de en un fallo de atributo tres llamadas mas abajo.
+    if not isinstance(array, xr.DataArray):
+        raise TypeError(
+            f"Se esperaba una banda unica en {href}, "
+            f"pero llego un {type(array).__name__}"
+        )
+
     bounds_native = transform_bounds("EPSG:4326", array.rio.crs, *bounds_wgs84)
     return array.rio.clip_box(*bounds_native).squeeze(drop=True)
 
@@ -255,7 +267,10 @@ def downsample(array: xr.DataArray, target_resolution_m: int) -> xr.DataArray:
 
     y_dim, x_dim = array.dims[-2], array.dims[-1]
     return (
+        # `.mean()` existe en el objeto que devuelve `coarsen`, pero no esta
+        # declarado en los tipos que publica xarray. Es un hueco de los stubs, no
+        # del codigo: la agregacion se ejecuta en los tests.
         array.coarsen({y_dim: factor, x_dim: factor}, boundary="trim")
-        .mean()
+        .mean()  # type: ignore[attr-defined]
         .rio.write_crs(array.rio.crs)
     )

@@ -93,11 +93,29 @@ los que ya salieron bien.
 ## Puesta en marcha
 
 ```bash
-uv sync                        # crea el entorno con Python 3.12
-uv run pytest                  # 252 tests, sin red
-uv run pytest -m integration   # contrato con el catálogo remoto
+uv sync --all-groups           # crea el entorno con Python 3.12
+uv run pytest -m "not integration"   # 251 tests, sin red
+uv run pytest -m integration         # el que sí sale a internet: contrato con el catálogo
 uv run ruff check .            # análisis estático
+uv run mypy                    # tipos
 ```
+
+Los cuatro comandos son los mismos que ejecuta la integración continua, que corre
+en cada empujón y en cada pull request. El contrato con el catálogo remoto va en
+un trabajo aparte y no bloquea: depende de que un servicio de terceros esté en
+pie, y eso no puede frenar una rama.
+
+### El entregable
+
+```bash
+uv build                                      # el paquete instalable
+uv run python scripts/build_deliverable.py    # el zip que pide la guía del máster
+```
+
+El segundo arma `Dario_Rodriguez_Gonzalez_TFM.zip` con el código versionado (vía
+`git archive`, para no colar `data/`, el entorno ni el `.env`), el paquete ya
+construido y la documentación. Si falta la memoria o el enlace del vídeo, lo dice
+por su nombre en vez de dejar el hueco.
 
 ### El panel
 
@@ -120,7 +138,7 @@ vegetación con la lluvia de AEMET.
 - [x] Modelado con dbt sobre DuckDB: climatología y anomalía semanal
 - [x] Orquestación con Airflow 3, con programación por assets
 - [x] Panel Streamlit + Folium: mapa de anomalía, serie por municipio y el cruce
-- [ ] Empaquetado Docker Compose y CI en GitHub Actions
+- [x] CI en GitHub Actions, paquete instalable y script del entregable
 
 ## Fuentes de datos
 

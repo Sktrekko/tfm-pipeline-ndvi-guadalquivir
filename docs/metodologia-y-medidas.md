@@ -649,6 +649,119 @@ valor de mayo de 2023 sale de menos de dos tercios de la cuenca. La fracción de
 municipios por debajo, en cambio, es robusta a eso, porque es una proporción
 sobre los que sí tienen dato.
 
+## 9. El panel: hacer mirable el resultado
+
+Hasta aquí todo el trabajo devuelve tablas. Una tabla de 128.831 filas contiene
+el resultado pero no lo enseña, y hay preguntas que solo se responden mirando:
+si el daño de 2023 se reparte por toda la cuenca o se concentra en una comarca,
+o si un municipio concreto se comporta como sus vecinos. El panel existe para
+eso y para nada más: no calcula nada que no estuviera ya calculado.
+
+### 9.1 De dónde lee, y por qué no del almacén
+
+El panel no habla con Iceberg. Lee de dos ficheros sueltos: el DuckDB donde dbt
+materializa la capa gold, y el GeoPackage de municipios. La consecuencia
+práctica es que **arranca con Docker apagado**, cosa que importa para grabar el
+vídeo de la defensa y para que cualquiera que clone el repositorio pueda abrirlo
+sin montar la infraestructura entera.
+
+La razón de fondo es que el panel hace siempre las mismas preguntas y esas
+respuestas ya están calculadas. Medido sobre el almacén real:
+
+| Operación | Tiempo |
+|---|---|
+| Abrir el fichero gold | 18 ms |
+| Listar las 418 semanas disponibles | 10 ms |
+| El mapa de una semana (445 municipios) | 10 ms |
+| La serie completa de un municipio | 9 ms |
+| El cruce mensual entero | 7 ms |
+| Geometría simplificada, desde la caché | 101 ms |
+
+Frente a eso, montar el catálogo Iceberg cuesta 0,33 s antes de la primera
+consulta y leer una sola semana de la capa bronze 177 ms, diecisiete veces más.
+Y la comparación es generosa con Iceberg, porque en bronze **la anomalía no
+existe**: para calcularla habría que recorrer los ocho años y rehacer la
+climatología en cada clic, que es justamente el trabajo que dbt hace una vez.
+
+El precio de la decisión hay que decirlo: el panel muestra lo que había la
+última vez que corrió `dbt build`, no lo que hay en Iceberg ahora mismo. Para
+una serie de ocho años que crece un día de cada cinco, es el intercambio
+correcto.
+
+### 9.2 Dibujar 445 municipios sin ahogar el navegador
+
+Los límites del IGN se eligieron por precisión, con 431 vértices de mediana,
+porque el borde decide qué píxeles entran en la media de cada municipio. Para
+dibujar no hace falta ni de lejos tanto: la capa en crudo son **9,83 MB de
+GeoJSON**, y eso metido en una página web la ahoga.
+
+| Tolerancia | GeoJSON | Del original | Error de área |
+|---|---|---|---|
+| nativo | 9,83 MB | 100% | - |
+| 20 m | 3,09 MB | 31,4% | -0,00% |
+| 50 m | 1,83 MB | 18,6% | 0,00% |
+| **100 m** | **1,17 MB** | **11,9%** | **-0,00%** |
+| 200 m | 0,72 MB | 7,3% | -0,03% |
+| 500 m | 0,38 MB | 3,9% | -0,03% |
+
+Se eligen 100 m, que dejan el fichero en un octavo sin mover el área ni una
+centésima de punto porcentual. El número no es redondo por casualidad: es la
+resolución objetivo del proyecto. **Dibujar el borde más fino que el píxel con
+el que se calculó el valor que ese borde colorea no añade información, solo
+bytes.** Simplificar de cero cuesta 0,90 s, así que el resultado se guarda en
+disco y los arranques siguientes lo leen en 101 ms.
+
+Conviene ser explícito con lo que sí se pierde: al simplificar, dos municipios
+vecinos pueden dejar de encajar y aparece una rendija entre ellos. Es un defecto
+cosmético del mapa y no toca ningún número, porque las medias se calcularon con
+la geometría buena mucho antes de llegar al dibujo.
+
+### 9.3 Tres decisiones de visualización que se pueden defender
+
+**La escala del mapa es divergente, no un arcoíris.** Una anomalía tiene signo:
+lo que importa es a qué lado del cero cae y cuánto se aleja. Eso pide dos
+colores opuestos con un neutro en medio. Un arcoíris inventaría un orden
+(rojo, naranja, amarillo, verde, azul) donde lo que hay es distancia a un
+centro. La rampa elegida va de marrón a verde y no de rojo a azul porque en un
+mapa de vegetación el verde ya significa algo para quien lo mira, y pelearse con
+esa intuición para ganar contraste sale caro.
+
+La paleta se pasó por un validador en vez de decidirla a ojo. El resultado que
+importa es la separación entre colores contiguos vista por un ojo con daltonismo:
+**ΔE de 20,9** en el peor par, contra un umbral de 8. El validador también avisó
+de que el contraste contra el fondo del mapa es bajo, y eso obliga a dar relieve
+por otra vía: por eso la leyenda lleva el nombre escrito al lado de cada color y
+debajo del mapa hay una tabla con los números exactos. El color nunca es el único
+que informa.
+
+**El tema se fija en claro y no sigue al del navegador.** El punto medio de una
+escala divergente es un gris casi blanco; sobre fondo oscuro ese medio pasa a ser
+el color más llamativo del mapa, justo al revés de lo que debe ser. La
+alternativa honesta sería diseñar y validar una segunda paleta para oscuro. Para
+un panel de mapas, donde además el mapa base es claro, no compensa.
+
+**El cruce son dos gráficas apiladas y no una con dos ejes verticales.** Es la
+decisión de la que más se aprende. Poner milímetros de lluvia y unidades de NDVI
+en el mismo dibujo con dos escalas deja que quien lo dibuja decida, moviendo esas
+escalas, si las dos curvas parecen ir juntas o no. Es la forma más común de
+mentir con un gráfico sin falsear un solo dato. Apiladas y compartiendo el eje
+del tiempo se comparan igual de bien y no hay encuadre que manipular.
+
+### 9.4 Qué se prueba de un panel
+
+Nadie escribe tests contra una página web, y por eso un panel es la pieza más
+fácil de romper sin enterarse. La forma de recuperar la garantía es que la
+lógica no viva dentro de la interfaz: todas las consultas están en `panel.py`,
+que no importa Streamlit ni Folium, y `app.py` solo dibuja lo que aquel
+devuelve.
+
+Con esa separación, los **18 tests** del módulo se ocupan de lo que un panel
+estropea en silencio: que el filtro por semana filtre de verdad (si no, el mapa
+pintaría los nueve años a la vez y seguiría pareciendo un mapa), que cada
+consulta traiga las columnas que la pantalla va a pintar, que la geometría
+simplificada conserve el área, y que un municipio sin provincia asignada siga
+apareciendo en el selector en lugar de desaparecer sin que nadie lo note.
+
 ## Apéndice: cierre de la carga
 
 Generado automáticamente al terminar la carga histórica, el

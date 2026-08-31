@@ -1,0 +1,20 @@
+# Tema del panel.
+#
+# Se fija claro a proposito, en vez de seguir al del navegador. La escala de
+# colores del mapa es divergente y su punto medio es un gris casi blanco: sobre
+# fondo oscuro ese medio pasa a ser el color mas llamativo del mapa, justo al
+# reves de lo que tiene que ser. La paleta se valido contra superficie clara
+# (separacion para daltonismo de 20,9 en el par adyacente peor), y esa
+# validacion no se hereda al invertir el fondo.
+#
+# La alternativa honesta seria disenar una segunda paleta para oscuro y
+# validarla tambien. Para un panel de mapas, donde ademas el mapa base es claro,
+# no compensa: se elige uno y se deja fijo.
+[theme]
+base = "light"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

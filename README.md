@@ -38,6 +38,7 @@ STAC API ──► catalog.py ──► raster.py ──► mosaic.py ──► 
 | `schemas.py` | Contratos de datos validados con Pandera. |
 | `aoi.py`     | Zonas de estudio y recorte a la cuenca. |
 | `weather.py` | Precipitación y temperatura diarias de AEMET, la segunda fuente. |
+| `panel.py`   | Consultas del panel. No importa Streamlit: la interfaz vive en `app.py`. |
 | `config.py`  | Configuración por variables de entorno. |
 
 ## Decisiones de diseño relevantes
@@ -93,10 +94,22 @@ los que ya salieron bien.
 
 ```bash
 uv sync                        # crea el entorno con Python 3.12
-uv run pytest                  # 216 tests, sin red
+uv run pytest                  # 252 tests, sin red
 uv run pytest -m integration   # contrato con el catálogo remoto
 uv run ruff check .            # análisis estático
 ```
+
+### El panel
+
+```bash
+uv run --group panel streamlit run app.py     # se abre en localhost:8501
+```
+
+No necesita Docker. Lee la capa gold del fichero DuckDB que deja `dbt build` y
+la geometría del GeoPackage de municipios, así que basta con haber construido
+las dos cosas una vez. Tiene tres vistas: mapa de anomalía con deslizador
+temporal, serie semanal de un municipio frente a su normal, y el cruce de la
+vegetación con la lluvia de AEMET.
 
 ## Estado
 
@@ -106,7 +119,7 @@ uv run ruff check .            # análisis estático
 - [x] Almacenamiento Iceberg sobre MinIO, con carga histórica 2018-2026
 - [x] Modelado con dbt sobre DuckDB: climatología y anomalía semanal
 - [x] Orquestación con Airflow 3, con programación por assets
-- [ ] Panel Streamlit + Folium
+- [x] Panel Streamlit + Folium: mapa de anomalía, serie por municipio y el cruce
 - [ ] Empaquetado Docker Compose y CI en GitHub Actions
 
 ## Fuentes de datos

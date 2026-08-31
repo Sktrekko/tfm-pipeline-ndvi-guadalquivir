@@ -136,12 +136,17 @@ jobs:
           assert 'site-packages' in paquete.__file__, 'se importo el repositorio, no el paquete'
           "
 
-      - name: Guardar el artefacto
-        uses: actions/upload-artifact@v4
-        with:
-          name: paquete-python
-          path: dist/
-          retention-days: 30
+      # Aqui habia un paso que subia el wheel como artefacto descargable de la
+      # ejecucion. Se quito tras verlo fallar en la primera ejecucion real: la
+      # cuota de almacenamiento de artefactos de la cuenta esta agotada, y el
+      # trabajo entero se ponia en rojo por ello aunque el paquete se hubiera
+      # construido e instalado bien.
+      #
+      # No se sustituye por nada porque no hace falta. El wheel pesa 60 KB y sale
+      # de un solo comando (`uv build`), asi que guardarlo treinta dias en un
+      # servidor ajeno no aporta nada que no de volver a construirlo. Lo que si
+      # importa, que es saber que se puede construir e instalar limpio, lo
+      # comprueba el paso anterior.
 
   contrato-remoto:
     name: Contrato con el catalogo STAC

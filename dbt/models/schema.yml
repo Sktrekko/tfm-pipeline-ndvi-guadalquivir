@@ -123,3 +123,113 @@ models:
     tests:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns: [province_code, anio, mes]
+
+  - name: stg_weather_daily
+    description: Observaciones diarias de las estaciones, con ano y mes derivados.
+    columns:
+      - name: station_id
+        tests: [not_null]
+      - name: observed_on
+        tests: [not_null]
+      - name: precipitation_mm
+        description: >
+          Sin not_null a proposito: el hueco es informacion. Lo que si se
+          comprueba es que ninguna lectura sea negativa ni absurda. El record
+          diario de Espana anda por los 800 mm, asi que 500 deja margen de sobra
+          y aun asi cazaria un error de unidades o una coma decimal mal leida.
+        tests:
+          - dbt_utils.accepted_range: {min_value: 0, max_value: 500}
+      - name: temp_mean_c
+        tests:
+          - dbt_utils.accepted_range: {min_value: -25, max_value: 50}
+      - name: mes
+        tests:
+          - not_null
+          - dbt_utils.accepted_range: {min_value: 1, max_value: 12}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [station_id, observed_on]
+
+  - name: weather_monthly_anomaly
+    description: Lluvia mensual de cada estacion frente a su propia normal.
+    columns:
+      - name: station_id
+        tests: [not_null]
+      - name: dias_con_dato
+        description: >
+          Nunca puede pasar de los dias del mes. Si pasara, el almacen tendria
+          dos filas para el mismo dia y la clave de la tabla estaria rota.
+        tests:
+          - dbt_utils.accepted_range: {min_value: 0, max_value: 31}
+      - name: ratio_lluvia
+        description: >
+          Lluvia del mes en tanto por uno de lo normal. La comprobacion se
+          limita a las filas que consume el cruce, y esa restriccion es la
+          comprobacion misma. Sin ella el maximo de la tabla es 295, de una
+          estacion que empezo a medir en 2024 y cuya normal de diciembre son
+          0,20 mm de un solo ano: no es lluvia extraordinaria, es una normal que
+          no existe. Entre las filas con normal de cuatro anos o mas y el mes
+          medido entero, el maximo real baja a 9,0, un julio de 1,2 mm frente a
+          una normal de 0,13. El corte en 25 deja sitio de sobra a esos veranos
+          y sigue cazando una normal degenerada que se colara en el cruce.
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 25
+              config:
+                where: "normal_fiable and mes_completo"
+      - name: anios_observados
+        tests:
+          - dbt_utils.accepted_range: {min_value: 1, max_value: 9}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [station_id, anio, mes]
+
+  - name: ndvi_monthly_anomaly
+    description: Anomalia mensual de NDVI por municipio, para poder cruzarla con la lluvia.
+    columns:
+      - name: zone_id
+        tests: [not_null]
+      - name: ndvi_observado
+        tests:
+          - not_null
+          - dbt_utils.accepted_range: {min_value: -1, max_value: 1}
+      - name: anomalia_ndvi
+        description: >
+          Diferencia entre dos valores acotados en [-1, 1], asi que solo puede
+          caer en [-2, 2]. Salirse de ahi significaria que el join con la normal
+          ha emparejado municipios distintos.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range: {min_value: -2, max_value: 2}
+      - name: mes
+        tests:
+          - dbt_utils.accepted_range: {min_value: 1, max_value: 12}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [zone_id, anio, mes]
+
+  - name: ndvi_weather_monthly
+    description: >
+      El cruce de las dos fuentes: vegetacion y lluvia de la cuenca, mes a mes,
+      en la misma fila. Es el modelo que sostiene el apartado 7.3 de la memoria.
+    columns:
+      - name: mes_fecha
+        description: Primer dia del mes, para poder ordenar la serie sin trucos.
+        tests: [not_null, unique]
+      - name: anomalia_ndvi
+        tests:
+          - dbt_utils.accepted_range: {min_value: -1, max_value: 1}
+      - name: fraccion_municipios_por_debajo
+        tests:
+          - dbt_utils.accepted_range: {min_value: 0, max_value: 1}
+      - name: estaciones
+        description: >
+          Estaciones con el mes completo y normal fiable. Si un mes bajara de
+          treinta, la media de la cuenca dejaria de representarla y habria que
+          mirar que paso con la red antes de creerse la fila.
+        tests:
+          - dbt_utils.accepted_range: {min_value: 30, max_value: 120}
+      - name: municipios
+        tests:
+          - dbt_utils.accepted_range: {min_value: 1, max_value: 445}

@@ -473,20 +473,181 @@ el de las tablas.
 **2026 llega solo hasta el 23 de agosto**, así que su otoño está vacío y su
 media anual no es comparable con la de un año cerrado.
 
-Y una pregunta que este trabajo no cierra: 2024, 2025 y 2026 salen los tres por
-encima, con inviernos que suben de +0,27 a +0,44 y a +0,64. Puede ser
-recuperación real tras la sequía o puede ser un efecto del sensor o del
+Y una pregunta que este apartado dejó abierta: 2024, 2025 y 2026 salen los tres
+por encima, con inviernos que suben de +0,27 a +0,44 y a +0,64. Podía ser
+recuperación real tras la sequía o podía ser un efecto del sensor o del
 reprocesado del archivo. Tres años sobre una serie de nueve no bastan para
 llamarlo tendencia, y afirmarlo sin contrastar sería justo el tipo de conclusión
-que el resto del trabajo se ha cuidado de no sacar.
-
-Queda pendiente el cruce con datos de precipitación de AEMET. Ese contraste
-convertiría "el pipeline detecta una anomalía" en "el pipeline detecta la
-sequía que registró la agencia meteorológica", que es bastante más sólido, y
-permitiría además fechar el desfase entre la lluvia que falta y la hoja que se
-seca.
+que el resto del trabajo se ha cuidado de no sacar. **El apartado 8 la
+responde**, y con una fuente que no tiene nada que ver con el satélite.
 
 [7.1 Logros, 7.2 Métricas, 7.4 Limitaciones]
+
+## 8. El cruce con la lluvia: de una anomalía a un mecanismo
+
+Todo lo anterior sale de un solo instrumento. Un sensor óptico en órbita dice
+que la vegetación de la cuenca se apartó de lo normal en la primavera de 2023,
+y eso, por sí solo, admite varias explicaciones que no son la sequía: un cambio
+de cultivo, un incendio, un reprocesado del archivo o un error del propio
+pipeline. La forma de descartarlas no es afinar el mismo instrumento sino
+traer otro que no se hable con él.
+
+Ese otro instrumento es la red de pluviómetros de AEMET: 109 estaciones dentro
+de la cuenca, 298.257 observaciones diarias del 1 de enero de 2018 al 23 de
+agosto de 2026. No comparte con Sentinel-2 ni el sensor, ni el operador, ni la
+física de la medida, ni el grano espacial. Si las dos series coinciden, la
+coincidencia no puede venir de un fallo compartido.
+
+### 8.1 Por qué el cruce va sobre la cuenca y no sobre el municipio
+
+Es la decisión de diseño de esta parte y va en contra de lo que apetece hacer.
+Hay 445 municipios con NDVI y 109 estaciones con lluvia, así que para poner
+lluvia en cada municipio habría que interpolar: elegir un método (vecino más
+próximo, distancia inversa, kriging), justificarlo y cargar con el error que
+introduzca. Ese error tiene una propiedad desagradable: no se ve en el
+resultado, se disfraza de señal.
+
+Agregando a la cuenca la pregunta se responde sin interpolar nada. Los 445
+municipios dan una media por su lado, las 109 estaciones dan otra por el suyo, y
+se comparan las dos series. Si la señal se ve así, no hace falta asumir el
+riesgo. La versión por municipio queda como línea futura, para cuando la
+pregunta sea *dónde* y no *cuándo*.
+
+Hay además una trampa propia de esta fuente que obliga a trabajar con anomalías
+y no con lluvia bruta: **la red no es la misma todos los años**. Las estaciones
+activas pasan de 92 en 2018 a 108 en 2026. Promediar los milímetros de cada año
+compararía redes distintas y confundiría un cambio de instrumental con un cambio
+de clima. Por eso cada estación se compara con su propia normal para ese mes
+concreto, igual que cada municipio se compara con la suya, y solo entra al
+promedio de la cuenca si tiene cuatro años o más de historia y el mes medido
+entero (al menos el 90% de los días). El 90,2% de los pares estación-mes cumplen
+ese segundo requisito.
+
+El grano temporal del cruce es el **mes** y no la semana, que es el de la serie
+de NDVI. La razón es que la lluvia es discontinua: una semana sin lluvia es lo
+normal incluso en un invierno húmedo, de modo que la serie semanal está llena
+de ceros que no significan nada. El mes es la ventana más corta en la que un
+cero sí es una noticia.
+
+### 8.2 Los nueve años, vistos por los dos instrumentos a la vez
+
+| Año | Lluvia (mm) | Sobre lo normal | Anomalía NDVI | Municipios por debajo |
+|---|---|---|---|---|
+| 2018 | 680,5 | 1,40 | +0,0070 | 37% |
+| 2019 | 372,3 | 0,77 | -0,0172 | 76% |
+| 2020 | 412,6 | 0,86 | +0,0066 | 39% |
+| 2021 | 397,6 | 0,83 | -0,0046 | 59% |
+| 2022 | 422,5 | 0,87 | -0,0160 | 65% |
+| **2023** | **290,6** | **0,61** | **-0,0243** | **74%** |
+| 2024 | 543,6 | 1,12 | +0,0269 | 27% |
+| 2025 | 659,3 | 1,36 | +0,0123 | 40% |
+| 2026 (8 meses) | 403,5 | 1,43 | +0,0133 | 27% |
+
+Las dos columnas suben y bajan juntas. **2023 es el año más seco de la serie con
+diferencia**, 0,61 de lo que le tocaría, y es también el peor año de vegetación.
+Los tres años húmedos, 2024 a 2026, son los tres mejores. La correlación entre
+las dos columnas sobre los nueve años es **r = +0,756** (t = 3,06 con 7 grados
+de libertad). Sobre los ocho años cerrados, dejando fuera 2026 porque solo llega
+a agosto, sale **r = +0,738**.
+
+Esto es lo que cierra la pregunta abierta del apartado 7.5. **El repunte de
+2024-2026 no es un efecto del sensor: es lluvia.** Los tres años que el satélite
+ve más verdes son exactamente los tres en que los pluviómetros recogen más agua,
+y los pluviómetros no saben nada de líneas base de procesado ni de reprocesados
+del archivo. Sigue sin ser demostración, porque una deriva del sensor podría
+coincidir en el tiempo con un periodo húmedo, pero ya no hace falta invocarla
+para explicar lo que se ve.
+
+### 8.3 El desfase, medido
+
+La afirmación que sostiene todo el relato es que la lluvia y la hoja no van a la
+vez: fallan las lluvias de otoño, la vegetación aguanta el invierno porque
+consume poco, y el daño estalla en la primavera siguiente. Esa frase es fácil de
+escribir y hasta ahora estaba sin medir. Con las dos series mensuales en la misma
+tabla se mide correlacionándolas a distintos retardos, sobre los 104 meses de la
+serie:
+
+| Qué se correlaciona con la anomalía de NDVI del mes | n | r | t |
+|---|---|---|---|
+| Lluvia de **ese mismo** mes | 102 | +0,159 | 1,61 |
+| Lluvia del **mes anterior** | 103 | **+0,473** | **5,39** |
+| Lluvia acumulada de los **3 meses** que terminan ahí | 103 | **+0,499** | **5,79** |
+| Lluvia acumulada de los **6 meses** que terminan ahí | 103 | +0,493 | 5,69 |
+
+La primera fila es el resultado y conviene leerla despacio: **la lluvia de un mes
+no explica la vegetación de ese mes**. Con r = 0,159 no hay relación que
+defender. La misma lluvia, mirada un mes después, explica tres veces más. Ese
+salto de una fila a la siguiente es el desfase, y sale del dato en vez de la
+intuición.
+
+Lo que mejor funciona es el acumulado del trimestre (r = 0,499), y tiene sentido
+agronómico: la planta no responde al chaparrón de anteayer sino al agua que hay
+en el suelo, que es la que ha ido entrando durante meses. Estirar la ventana a
+seis meses no mejora nada (0,493), lo cual también es información: la memoria
+hídrica útil de la cuenca es de un trimestre, no de medio año.
+
+### 8.4 El episodio 2022-2023, mes a mes
+
+Con las dos series juntas, la secuencia se lee de corrido. Cada fila es un mes;
+el ratio es lo que recogió la estación típica respecto a su propia normal.
+
+| Mes | Lluvia / normal | Anomalía NDVI | Municipios por debajo |
+|---|---|---|---|
+| oct 2022 | 0,25 | -0,0250 | 81% |
+| nov 2022 | 0,43 | -0,0558 | 98% |
+| dic 2022 | 2,39 | -0,0050 | 57% |
+| ene 2023 | 0,34 | -0,0037 | 52% |
+| feb 2023 | 0,18 | -0,0414 | 93% |
+| mar 2023 | 0,12 | -0,0294 | 84% |
+| **abr 2023** | **0,02** | **-0,0811** | **99%** |
+| **may 2023** | 2,37 | **-0,0880** | **99%** |
+| jun 2023 | 3,48 | -0,0164 | 67% |
+
+El otoño de 2022 falla: octubre recoge 17,5 mm donde le tocan 62,0 y noviembre
+30,9 donde le tocan 58,4. Diciembre da un respiro (más del doble de lo normal) y
+la vegetación lo acusa al instante, con la anomalía casi en cero en enero. Y
+entonces se hunde el invierno entero: febrero al 18%, marzo al 12% (14,7 mm
+frente a 100,4) y **abril de 2023 con 2,2 mm frente a una normal de 47,5**, o
+sea que la estación típica recogió el 2% de lo suyo. Es un mes prácticamente sin
+lluvia en el mes en que el cereal de secano llena el grano.
+
+El NDVI toca fondo justo detrás, en abril y mayo, con **el 99% de los 445
+municipios por debajo de su normal**. Y el detalle que mejor ilustra el desfase
+está en mayo y junio: llueve más del doble y el triple de lo normal, y la
+vegetación sigue en su peor momento en mayo y todavía por debajo en junio. **La
+lluvia que llega tarde no deshace el daño**, porque el cereal ya no está en
+condiciones de aprovecharla. Un análisis sin retardo, correlacionando cada mes
+consigo mismo, habría leído esos dos meses como una contradicción.
+
+### 8.5 Lo que este cruce no demuestra
+
+**La campaña agrícola completa no alcanza significación por sí sola.** Agregando
+a campaña, de octubre a marzo para la lluvia y abril-mayo para el NDVI, quedan
+ocho puntos y la correlación es r = 0,530 con t = 1,53 y 6 grados de libertad:
+apunta en la dirección esperada pero ocho campañas son demasiadas pocas para
+sostener nada. La serie mensual (n = 103) sí llega holgadamente, y es la que se
+usa. Decir lo contrario sería elegir el corte que da el número bonito.
+
+**Correlación no es causalidad, y aquí menos que en otros sitios.** Que la lluvia
+y el NDVI se muevan juntos con un mes de retardo es compatible con la
+explicación agronómica, que es la razonable, pero también con que ambos
+respondan a un tercer factor (la temperatura, por ejemplo, que en la primavera
+de 2023 también fue anómala). El cruce descarta que la anomalía de NDVI sea un
+artefacto del pipeline; no aísla el mecanismo físico.
+
+**La media de la cuenca esconde el regadío.** Se promedian 445 municipios de
+secano y de regadío juntos, y el regadío no responde a la lluvia del mes sino a
+la asignación de la confederación. Eso amortigua la señal en lugar de inflarla,
+así que el efecto real en secano es mayor que el que muestran estas tablas, pero
+separar los dos regímenes exige un dato de usos del suelo que este trabajo no
+carga.
+
+**Tres meses de la serie tienen menos municipios de lo normal** (noviembre de
+2022 con 392, mayo de 2023 con 285, octubre de 2023 con 371), porque las nubes
+tiraron pasadas. Son justo meses del episodio, así que conviene decirlo: el
+valor de mayo de 2023 sale de menos de dos tercios de la cuenca. La fracción de
+municipios por debajo, en cambio, es robusta a eso, porque es una proporción
+sobre los que sí tienen dato.
 
 ## Apéndice: cierre de la carga
 

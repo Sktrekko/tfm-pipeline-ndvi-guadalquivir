@@ -24,3 +24,23 @@ sources:
         description: Dimension de municipios, con provincia y geometria en WKT.
       - name: ingestion_log
         description: Control de la carga historica, una fila por intento.
+      - name: weather_station_daily
+        description: >
+          Precipitacion y temperatura diarias de las estaciones de AEMET
+          dentro de la cuenca. Es la segunda fuente del proyecto y vive en la
+          misma capa bronze que el NDVI sin mezclarse con el: son observaciones
+          de cosas distintas, medidas por instrumentos distintos y con grano
+          espacial distinto (109 puntos frente a 445 poligonos). Cruzarlas es
+          trabajo de la capa gold, en SQL, donde la decision de como se cruzan
+          queda a la vista y se puede discutir.
+        columns:
+          - name: station_id
+            description: Indicativo climatologico de la estacion.
+          - name: observed_on
+            description: Dia de la observacion.
+          - name: precipitation_mm
+            description: >
+              Lluvia del dia. Opcional a proposito: un pluviometro averiado y un
+              dia sin lluvia cuentan cosas opuestas y no se pueden confundir.
+          - name: temp_mean_c
+            description: Temperatura media del dia.

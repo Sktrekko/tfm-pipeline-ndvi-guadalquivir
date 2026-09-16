@@ -123,8 +123,8 @@ def compactar_almacen(origen: Path, destino: Path) -> None:
         salida.execute(f"ATTACH '{origen}' AS viejo (READ_ONLY)")
         salida.execute("CREATE SCHEMA IF NOT EXISTS main_gold")
         tablas = salida.execute(
-            "SELECT table_name FROM viejo.information_schema.tables "
-            "WHERE table_schema = 'main_gold'"
+            "SELECT table_name FROM duckdb_tables() "
+            "WHERE database_name = 'viejo' AND schema_name = 'main_gold'"
         ).fetchall()
         for (tabla,) in tablas:
             salida.execute(

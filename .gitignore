@@ -40,3 +40,7 @@ dbt/.user.yml
 # ademas incluye la clave de sesion, que no debe salir del equipo. Lo que si se
 # versiona son los DAG, que viven en `dags/`.
 airflow/
+
+# La memoria se monta con memoria/montar_memoria.py y aterriza aqui dentro.
+# Es documentacion del TFM, no codigo: no se versiona.
+*.docx

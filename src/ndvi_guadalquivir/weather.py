@@ -68,8 +68,8 @@ class EmptyWindowError(Exception):
     climatologica de AEMET va con semanas de retraso, y con estaciones que aun
     no existian. Se separa de los fallos de red a proposito: confundir las dos
     cosas es lo que convierte un corte de conexion en un hueco silencioso de
-    quince dias en la serie, que es justo el error que este proyecto no puede
-    permitirse (ver la trampa 14 de CLAUDE.md, que fue exactamente eso).
+    quince dias en la serie. Es justo el error que este proyecto no puede
+    permitirse, y que de hecho ocurrio una vez durante el desarrollo.
     """
 
 

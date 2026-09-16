@@ -24,6 +24,7 @@ repetir una carga de quince horas solo para ver el mapa. Se copian dentro de
 
 No entran las descargas en bruto de `data/raw` (124 MB): son ficheros de origen
 publicos, el pipeline los vuelve a bajar solo, y el panel no los toca.
+"""
 
 from __future__ import annotations
 

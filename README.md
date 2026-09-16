@@ -113,9 +113,14 @@ uv run python scripts/build_deliverable.py    # el zip que pide la guía del má
 ```
 
 El segundo arma `Dario_Rodriguez_Gonzalez_TFM.zip` con el código versionado (vía
-`git archive`, para no colar `data/`, el entorno ni el `.env`), el paquete ya
+`git archive`, que deja fuera el entorno, las cachés y el `.env`), el paquete ya
 construido y la documentación. Si falta la memoria o el enlace del vídeo, lo dice
 por su nombre en vez de dejar el hueco.
+
+Incluye además los tres ficheros que el panel necesita para abrirse (unos 40 MB:
+el almacén DuckDB y las dos capas de geometría), de modo que quien reciba el zip
+pueda ejecutarlo sin levantar Docker ni repetir la carga histórica. Las descargas
+en bruto de `data/raw` (124 MB) sí quedan fuera: son públicas y se rebajan solas.
 
 ### El panel
 

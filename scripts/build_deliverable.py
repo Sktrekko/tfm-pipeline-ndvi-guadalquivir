@@ -16,9 +16,14 @@ es justamente lo que se quiere entregar.
 Entra tambien el paquete instalable ya construido, porque el enunciado pide un
 artefacto y un `.whl` es la forma estandar de entregarlo en Python.
 
-No entra ningun dato. Son 200 MB que se regeneran con los comandos del README, y
-las imagenes de satelite ni siquiera son del autor.
-"""
+Entran los tres ficheros que el panel necesita para abrirse (unos 40 MB): el
+almacen DuckDB con la capa gold y las dos capas de geometria. Sin ellos el zip
+se lee pero no se ejecuta, y quien lo reciba tendria que levantar Docker y
+repetir una carga de quince horas solo para ver el mapa. Se copian dentro de
+`codigo/` porque es ahi donde el panel los busca.
+
+No entran las descargas en bruto de `data/raw` (124 MB): son ficheros de origen
+publicos, el pipeline los vuelve a bajar solo, y el panel no los toca.
 
 from __future__ import annotations
 
@@ -89,6 +94,29 @@ def build_package(root: Path, dest: Path) -> list[Path]:
     return copiados
 
 
+#: Lo minimo para que el panel arranque sin reconstruir nada. Se copian dentro
+#: de `codigo/` porque panel.py los busca por ruta relativa al directorio actual.
+PANEL_DATA = (
+    Path("data/warehouse.duckdb"),
+    Path("data/zones/zones_municipios.gpkg"),
+    Path("data/zones/zones_panel.geojson"),
+)
+
+
+def copy_panel_data(root: Path, dest: Path) -> list[str]:
+    """Copia los datos del panel dentro del codigo exportado. Devuelve lo que falte."""
+    faltan = []
+    for relativo in PANEL_DATA:
+        origen = root / relativo
+        if not origen.exists():
+            faltan.append(str(relativo))
+            continue
+        destino = dest / relativo
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(origen, destino)
+    return faltan
+
+
 def collect_documents(root: Path, dest: Path) -> list[str]:
     """Busca la memoria y el enlace del video. Devuelve lo que falte."""
     dest.mkdir(parents=True, exist_ok=True)
@@ -119,6 +147,14 @@ def write_manifest(dest: Path, paquetes: list[Path], faltan: list[str]) -> None:
         "codigo/      El repositorio completo tal como esta versionado.",
         "paquete/     El paquete instalable ya construido (.whl y .tar.gz).",
         "docs/        Memoria y enlace al video.",
+        "",
+        "Como abrir el panel (no hace falta Docker ni reconstruir nada)",
+        "--------------------------------------------------------------",
+        "    cd codigo",
+        "    uv sync --group panel",
+        "    uv run --group panel streamlit run app.py      -> http://localhost:8501",
+        "",
+        "Los datos del panel ya van dentro, en codigo/data/.",
         "",
         "Como instalar el paquete",
         "------------------------",
@@ -161,11 +197,15 @@ def build(root: Path, output_dir: Path, *, allow_dirty: bool) -> Path:
     print("Exportando el codigo versionado...")
     export_source(root, montaje)
 
+    print("Copiando los datos del panel...")
+    faltan_datos = copy_panel_data(root, montaje / "codigo")
+
     print("Construyendo el paquete...")
     paquetes = build_package(root, montaje / "paquete")
 
     print("Buscando memoria y video...")
     faltan = collect_documents(root, montaje / "docs")
+    faltan += ["datos del panel (" + ", ".join(faltan_datos) + ")"] if faltan_datos else []
 
     write_manifest(montaje, paquetes, faltan)
 

@@ -130,7 +130,7 @@ def _legend() -> None:
 # ---------------------------------------------------------------------------
 # Cabecera
 # ---------------------------------------------------------------------------
-st.title("Vegetacion de la cuenca del Guadalquivir")
+st.title("Vegetación de la cuenca del Guadalquivir")
 
 try:
     cifras = headline_numbers(_connection())
@@ -146,21 +146,21 @@ col4.metric("Hasta", str(cifras["hasta"]))
 
 pie = (
     "NDVI semanal por municipio a partir de Sentinel-2, comparado con la normal "
-    "de ese mismo municipio en esa misma semana del ano. Los datos salen de la "
+    "de ese mismo municipio en esa misma semana del año. Los datos salen de la "
     "capa gold que construye dbt."
 )
 peor = cifras["peor_semana"]
 if peor:
     municipio, anio_peor, semana_peor, sigmas = peor
     pie += (
-        f" La observacion mas extrema de toda la serie es {municipio}, "
+        f" La observación más extrema de toda la serie es {municipio}, "
         f"semana {semana_peor} de {anio_peor}, a {abs(sigmas):.1f} desviaciones "
-        "tipicas por debajo de su normal."
+        "típicas por debajo de su normal."
     )
 st.caption(pie)
 
 mapa_tab, serie_tab, cruce_tab = st.tabs(
-    ["Mapa de anomalia", "Serie por municipio", "Cruce con la lluvia"]
+    ["Mapa de anomalía", "Serie por municipio", "Cruce con la lluvia"]
 )
 
 
@@ -182,7 +182,7 @@ with mapa_tab:
         options=list(range(len(etiquetas))),
         value=0,
         format_func=lambda i: etiquetas[i],
-        help="La lista va de la semana mas reciente a la mas antigua.",
+        help="La lista va de la semana más reciente a la más antigua.",
     )
     fila = semanas.iloc[posicion]
     anio, semana = int(fila.anio), int(fila.semana)
@@ -233,7 +233,7 @@ with mapa_tab:
             highlight_function=lambda _: {"weight": 2, "color": "#222222"},
             tooltip=folium.GeoJsonTooltip(
                 fields=["zone_name", "anomalia_ndvi", "anomalia_sigmas", "categoria"],
-                aliases=["Municipio", "Anomalia NDVI", "Desviaciones", "Estado"],
+                aliases=["Municipio", "Anomalía NDVI", "Desviaciones", "Estado"],
                 sticky=True,
             ),
         ).add_to(lienzo)
@@ -247,7 +247,7 @@ with mapa_tab:
         st.markdown(f"**Los quince municipios peor parados** · {anio}, semana {semana}")
         st.caption(
             "La tabla existe porque el color solo no basta para leer un valor. "
-            "Aqui estan los numeros exactos."
+            "Aquí están los números exactos."
         )
         tabla = (
             datos[["zone_name", "anomalia_ndvi", "anomalia_sigmas", "categoria"]]
@@ -255,14 +255,14 @@ with mapa_tab:
             .rename(
                 columns={
                     "zone_name": "Municipio",
-                    "anomalia_ndvi": "Anomalia",
+                    "anomalia_ndvi": "Anomalía",
                     "anomalia_sigmas": "Sigmas",
                     "categoria": "Estado",
                 }
             )
         )
         st.dataframe(
-            tabla.style.format({"Anomalia": "{:.3f}", "Sigmas": "{:.2f}"}),
+            tabla.style.format({"Anomalía": "{:.3f}", "Sigmas": "{:.2f}"}),
             hide_index=True,
             width="stretch",
         )
@@ -292,7 +292,7 @@ with mapa_tab:
                 ),
                 tooltip=["categoria", "municipios"],
             )
-            .properties(height=180, title="Como se reparte la cuenca esa semana"),
+            .properties(height=180, title="Cómo se reparte la cuenca esa semana"),
             width="stretch",
         )
 
@@ -393,7 +393,7 @@ with serie_tab:
             .mark_bar(size=2)
             .encode(
                 x=alt.X("fecha:T", title=None),
-                y=alt.Y("anomalia_ndvi:Q", title="Anomalia"),
+                y=alt.Y("anomalia_ndvi:Q", title="Anomalía"),
                 color=alt.condition(
                     alt.datum.anomalia_ndvi < 0,
                     alt.value(CATEGORY_COLORS["muy por debajo"]),
@@ -401,12 +401,12 @@ with serie_tab:
                 ),
                 tooltip=[
                     alt.Tooltip("fecha:T", title="Semana"),
-                    alt.Tooltip("anomalia_ndvi:Q", title="Anomalia", format=".3f"),
+                    alt.Tooltip("anomalia_ndvi:Q", title="Anomalía", format=".3f"),
                     alt.Tooltip("anomalia_sigmas:Q", title="Sigmas", format=".2f"),
                     alt.Tooltip("categoria:N", title="Estado"),
                 ],
             )
-            .properties(height=170, title="Cuanto se aparta de lo normal"),
+            .properties(height=170, title="Cuánto se aparta de lo normal"),
             width="stretch",
         )
 
@@ -421,8 +421,8 @@ with cruce_tab:
     mensual = _monthly()
 
     st.markdown(
-        "Dos instrumentos que no se hablan entre si: un sensor optico en orbita y "
-        "109 pluviometros de AEMET en el suelo. Si senalan el mismo ano, la "
+        "Dos instrumentos que no se hablan entre sí: un sensor óptico en órbita y "
+        "109 pluviómetros de AEMET en el suelo. Si señalan el mismo año, la "
         "coincidencia no puede venir de un fallo compartido."
     )
 
@@ -434,7 +434,7 @@ with cruce_tab:
         .mark_bar(cornerRadiusEnd=3, size=6)
         .encode(
             x=eje,
-            y=alt.Y("anomalia_ndvi:Q", title="Anomalia de NDVI"),
+            y=alt.Y("anomalia_ndvi:Q", title="Anomalía de NDVI"),
             color=alt.condition(
                 alt.datum.anomalia_ndvi < 0,
                 alt.value(CATEGORY_COLORS["muy por debajo"]),
@@ -442,11 +442,11 @@ with cruce_tab:
             ),
             tooltip=[
                 alt.Tooltip("mes_fecha:T", title="Mes"),
-                alt.Tooltip("anomalia_ndvi:Q", title="Anomalia NDVI", format=".4f"),
+                alt.Tooltip("anomalia_ndvi:Q", title="Anomalía NDVI", format=".4f"),
                 alt.Tooltip("municipios:Q", title="Municipios"),
             ],
         )
-        .properties(height=200, title="Vegetacion: cuanto se aparta de lo normal")
+        .properties(height=200, title="Vegetación: cuánto se aparta de lo normal")
     )
 
     abajo = (
@@ -454,7 +454,7 @@ with cruce_tab:
         .mark_bar(cornerRadiusEnd=3, size=6)
         .encode(
             x=eje,
-            y=alt.Y("anomalia_lluvia_mm:Q", title="Anomalia de lluvia (mm)"),
+            y=alt.Y("anomalia_lluvia_mm:Q", title="Anomalía de lluvia (mm)"),
             color=alt.condition(
                 alt.datum.anomalia_lluvia_mm < 0,
                 alt.value("#8C510A"),
@@ -464,18 +464,18 @@ with cruce_tab:
                 alt.Tooltip("mes_fecha:T", title="Mes"),
                 alt.Tooltip("lluvia_mm:Q", title="Lluvia (mm)", format=".1f"),
                 alt.Tooltip("lluvia_normal_mm:Q", title="Normal (mm)", format=".1f"),
-                alt.Tooltip("anomalia_lluvia_mm:Q", title="Anomalia", format=".1f"),
+                alt.Tooltip("anomalia_lluvia_mm:Q", title="Anomalía", format=".1f"),
                 alt.Tooltip("estaciones:Q", title="Estaciones"),
             ],
         )
-        .properties(height=200, title="Lluvia: cuanto se aparta de lo normal")
+        .properties(height=200, title="Lluvia: cuánto se aparta de lo normal")
     )
 
     st.altair_chart(alt.vconcat(arriba, abajo).resolve_scale(x="shared"),
                     width="stretch")
 
     st.caption(
-        "Dos graficas y no una con dos ejes verticales, a proposito: con dos "
+        "Dos gráficas y no una con dos ejes verticales, a propósito: con dos "
         "escalas en el mismo dibujo, quien lo dibuja decide si las curvas parecen "
         "ir juntas o no. Compartiendo solo el eje del tiempo, eso no se puede hacer."
     )
@@ -494,15 +494,15 @@ with cruce_tab:
     anual["ratio"] = (anual.lluvia / anual.normal).round(2)
     anual["anomalia_ndvi"] = anual.anomalia_ndvi.round(4)
 
-    st.markdown("**Ano a ano, las dos columnas que no se hablan**")
+    st.markdown("**Año a año, las dos columnas que no se hablan**")
     st.dataframe(
         anual[["anio", "meses", "lluvia", "ratio", "anomalia_ndvi"]].rename(
             columns={
-                "anio": "Ano",
+                "anio": "Año",
                 "meses": "Meses con dato",
                 "lluvia": "Lluvia (mm)",
                 "ratio": "Sobre lo normal",
-                "anomalia_ndvi": "Anomalia NDVI",
+                "anomalia_ndvi": "Anomalía NDVI",
             }
         ),
         hide_index=True,

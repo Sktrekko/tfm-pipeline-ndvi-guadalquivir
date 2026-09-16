@@ -17,7 +17,7 @@ Entra tambien el paquete instalable ya construido, porque el enunciado pide un
 artefacto y un `.whl` es la forma estandar de entregarlo en Python.
 
 Entran los tres ficheros que el panel necesita para abrirse (unos 40 MB): el
-almacen DuckDB con la capa gold y las dos capas de geometria. Sin ellos el zip
+almacen DuckDB reconstruido con solo la capa gold y la geometria del panel. Sin ellos el zip
 se lee pero no se ejecuta, y quien lo reciba tendria que levantar Docker y
 repetir una carga de quince horas solo para ver el mapa. Se copian dentro de
 `codigo/` porque es ahi donde el panel los busca.
@@ -98,15 +98,49 @@ def build_package(root: Path, dest: Path) -> list[Path]:
 #: Lo minimo para que el panel arranque sin reconstruir nada. Se copian dentro
 #: de `codigo/` porque panel.py los busca por ruta relativa al directorio actual.
 PANEL_DATA = (
-    Path("data/warehouse.duckdb"),
-    Path("data/zones/zones_municipios.gpkg"),
     Path("data/zones/zones_panel.geojson"),
 )
+
+#: El almacen de trabajo pesa 34 MB porque arrastra espacio libre y las vistas
+#: silver, que son vistas sobre Iceberg y sin Docker ni se leen. Reconstruirlo
+#: con solo las tablas gold lo deja en 17 MB, y el campus limita la entrega a 20.
+ALMACEN = Path("data/warehouse.duckdb")
+
+
+def compactar_almacen(origen: Path, destino: Path) -> None:
+    """Reescribe el almacen con solo las tablas gold, que es lo que lee el panel.
+
+    Las tablas silver son vistas sobre el catalogo Iceberg: sin los contenedores
+    levantados no devuelven nada, asi que ocupan sitio en el entregable sin dar
+    nada a cambio. Copiar tabla a tabla ademas compacta el fichero.
+    """
+    import duckdb
+
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    if destino.exists():
+        destino.unlink()
+    with duckdb.connect(str(destino)) as salida:
+        salida.execute(f"ATTACH '{origen}' AS viejo (READ_ONLY)")
+        salida.execute("CREATE SCHEMA IF NOT EXISTS main_gold")
+        tablas = salida.execute(
+            "SELECT table_name FROM viejo.information_schema.tables "
+            "WHERE table_schema = 'main_gold'"
+        ).fetchall()
+        for (tabla,) in tablas:
+            salida.execute(
+                f'CREATE TABLE main_gold."{tabla}" AS '
+                f'SELECT * FROM viejo.main_gold."{tabla}"'
+            )
+        salida.execute("CHECKPOINT")
 
 
 def copy_panel_data(root: Path, dest: Path) -> list[str]:
     """Copia los datos del panel dentro del codigo exportado. Devuelve lo que falte."""
     faltan = []
+    if (root / ALMACEN).exists():
+        compactar_almacen(root / ALMACEN, dest / ALMACEN)
+    else:
+        faltan.append(str(ALMACEN))
     for relativo in PANEL_DATA:
         origen = root / relativo
         if not origen.exists():
